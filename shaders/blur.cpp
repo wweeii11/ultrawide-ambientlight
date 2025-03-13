@@ -65,13 +65,6 @@ struct Vertex
     XMFLOAT2 texCoord;
 };
 
-// Constant buffer structure
-struct ConstantBuffer {
-    XMFLOAT2 texelSize;
-    float blurRadius;
-    float padding;
-};
-
 struct VS_BLOOM_PARAMETERS
 {
     float bloomThreshold;
@@ -152,7 +145,7 @@ enum BloomPresets
     None
 };
 
-BloomPresets g_Bloom = Blurry;
+BloomPresets g_Bloom = Default;
 
 static const VS_BLOOM_PARAMETERS g_BloomPresets[] =
 {
@@ -263,18 +256,25 @@ HRESULT Blur::Apply(TextureView target, TextureView source, BlurDirection direct
     D3D11_TEXTURE2D_DESC target_desc = {};
     target.GetTexture()->GetDesc(&target_desc);
 
-    // Update the constant buffer
-    //m_context->PSSetConstantBuffers(0, 1, m_bloomParams.GetAddressOf());
+    float overlap = (float)target_desc.Width * 0.01f;
 
+    D3D11_VIEWPORT vp;
+    vp.Width = (float)target_desc.Width;
+    vp.Height = (float)target_desc.Height;
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    vp.TopLeftX = 0;
+    vp.TopLeftY = 0;
+    m_context->RSSetViewports(1, &vp);
+
+    // Update the constant buffer
     if (direction == BlurHorizontal)
         m_context->PSSetConstantBuffers(0, 1, m_blurParamsWidth.GetAddressOf());
     else
         m_context->PSSetConstantBuffers(0, 1, m_blurParamsHeight.GetAddressOf());
 
-    //m_context->PSSetConstantBuffers(0, 1, m_constantBuffer.GetAddressOf());
-
     ID3D11RenderTargetView* rtv = target.GetRTV();
-    const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    const float clearColor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
     m_context->ClearRenderTargetView(rtv, clearColor);
 
     m_context->OMSetRenderTargets(1, &rtv, nullptr);

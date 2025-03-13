@@ -6,16 +6,16 @@
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dcomp.lib")
 
-AmbientLight::AmbientLight(const AmbientLightSettings& settings)
+AmbientLight::AmbientLight(const AppSettings& settings)
 {
 	m_gameWidth = settings.gameWidth;
 	m_gameHeight = settings.gameHeight;
 	m_windowWidth = 0;
 	m_windowHeight = 0;
-	m_blurSize = 64;
 	m_hwnd = nullptr;
 	m_mirror = settings.mirrored;
 	m_blurPasses = settings.blurPasses;
+	m_blurSize = settings.blurDownscale;
 	m_updateInterval = settings.updateInterval;
 }
 
@@ -94,57 +94,29 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 
 	hr = m_capture.Initialize(m_device);
 	m_copy.Initialize(m_device);
-	m_blur.Initialize(m_device, m_blurSize, m_blurSize);
 
+	m_blurPre.Initialize(m_device, m_gameWidth, m_gameHeight);
+	m_blurDownscale.Initialize(m_device, m_blurSize, m_blurSize);
+	
 	return 0;
 }
 
-HRESULT AmbientLight::RecreateTexture(DXGI_FORMAT format, UINT width, UINT height, TextureView& textureview)
-{
-	HRESULT hr = S_OK;
-	if (textureview.GetTexture())
-	{
-		ID3D11Texture2D* texture = textureview.GetTexture();
-		D3D11_TEXTURE2D_DESC desc;
-		texture->GetDesc(&desc);
-
-		if (desc.Format != format || desc.Width != width || desc.Height != height)
-		{
-			textureview.Clear();
-		}
-	}
-	if (!textureview.GetTexture())
-	{
-		ID3D11Texture2D* texture = nullptr;
-		D3D11_TEXTURE2D_DESC desc = {};
-		desc.Width = width;
-		desc.Height = height;
-		desc.MipLevels = 1;
-		desc.ArraySize = 1;
-		desc.Format = format;
-		desc.SampleDesc.Count = 1;
-		desc.SampleDesc.Quality = 0;
-		desc.Usage = D3D11_USAGE_DEFAULT;
-		desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-		desc.CPUAccessFlags = 0;
-		desc.MiscFlags = 0;
-		hr = m_device->CreateTexture2D(&desc, nullptr, &texture);
-		textureview.CreateViews(m_device.Get(), texture);
-	}
-	return hr;
-}
 
 HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 {
 	HRESULT hr = S_OK;
-	RecreateTexture(format, m_gameWidth, m_gameHeight, m_gameTexture);
-	UINT thumb_width = m_blurSize;
-	UINT thumb_height = m_blurSize;
+	m_gameTexture.RecreateTexture(m_device.Get(), format, m_gameWidth, m_gameHeight);
+	m_gameTexture1.RecreateTexture(m_device.Get(), format, m_gameWidth, m_gameHeight);
 
-	RecreateTexture(format, thumb_width, thumb_height, m_offscreen1);
-	RecreateTexture(format, thumb_width, thumb_height, m_offscreen2);
+	float aspect = (float)m_gameWidth / (float)m_gameHeight;
 
-	RecreateTexture(format, m_windowWidth, m_windowHeight, m_offscreen3);
+	UINT down_width = m_blurSize;
+	UINT down_height = m_blurSize;
+
+	m_offscreen1.RecreateTexture(m_device.Get(), format, down_width, down_height);
+	m_offscreen2.RecreateTexture(m_device.Get(), format, down_width, down_height);
+
+	m_offscreen3.RecreateTexture(m_device.Get(), format, m_windowWidth, m_windowHeight);
 	return hr;
 }
 
@@ -178,15 +150,22 @@ void AmbientLight::RenderEffects()
 		game_box.back = 1;
 
 		m_context->CopySubresourceRegion(m_gameTexture.GetTexture(), 0, 0, 0, 0, desktopTexture.Get(), 0, &game_box);
-		m_copy.Apply(m_offscreen1, m_gameTexture, m_mirror);
 
 		for (UINT i = 0; i < m_blurPasses; i++)
 		{
-			m_blur.Apply(m_offscreen2, m_offscreen1, Blur::BlurDirection::BlurHorizontal);
-			m_blur.Apply(m_offscreen1, m_offscreen2, Blur::BlurDirection::BlurVertical);
+			m_blurPre.Apply(m_gameTexture1, m_gameTexture, Blur::BlurDirection::BlurHorizontal);
+			m_blurPre.Apply(m_gameTexture, m_gameTexture1, Blur::BlurDirection::BlurVertical);
 		}
 
-		m_copy.Apply(m_offscreen3, m_offscreen1);
+		m_copy.Apply(m_offscreen1, m_gameTexture);
+
+		for (UINT i = 0; i < m_blurPasses; i++)
+		{
+			m_blurDownscale.Apply(m_offscreen2, m_offscreen1, Blur::BlurDirection::BlurHorizontal);
+			m_blurDownscale.Apply(m_offscreen1, m_offscreen2, Blur::BlurDirection::BlurVertical);
+		}
+
+		m_copy.Apply(m_offscreen3, m_offscreen1, m_mirror);
 	}
 }
 

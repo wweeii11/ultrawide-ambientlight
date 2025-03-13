@@ -3,10 +3,11 @@
 #include <fstream>
 
 #define DEFAULT_BLUR		3
+#define DEFAULT_DOWNSCALE	64
 #define DEFAULT_UPDATE		2
 #define DEFAULT_MIRRORED	false
 
-AmbientLightSettings ReadSettings()
+AppSettings ReadSettings()
 {
 	// read config file
 	inipp::Ini<char> ini;
@@ -16,6 +17,9 @@ AmbientLightSettings ReadSettings()
 
 	int blur = DEFAULT_BLUR;
 	inipp::get_value(ini.sections["Game"], "BlurStrength", blur);
+
+	int blurSize = DEFAULT_DOWNSCALE;
+	inipp::get_value(ini.sections["Game"], "BlurDownscale", blurSize);
 	
 	int updateInt = DEFAULT_UPDATE;
 	inipp::get_value(ini.sections["Game"], "UpdateInterval", updateInt);
@@ -34,10 +38,11 @@ AmbientLightSettings ReadSettings()
 		inipp::get_value(ini.sections[resolution.c_str()], "Height", res_height);
 	}
 
-	AmbientLightSettings settings = {};
+	AppSettings settings = {};
 	settings.gameWidth = res_width;
 	settings.gameHeight = res_height;
 	settings.blurPasses = blur;
+	settings.blurDownscale = blurSize;
 	settings.updateInterval = updateInt;
 	settings.mirrored = mirrored;
 
@@ -46,7 +51,7 @@ AmbientLightSettings ReadSettings()
 
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nCmdShow)
 {
-	AmbientLightSettings settings = ReadSettings();
+	AppSettings settings = ReadSettings();
 
 	AmbientLight ambientLight(settings);
 	PresentWindow present;

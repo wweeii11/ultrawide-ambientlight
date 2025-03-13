@@ -15,6 +15,16 @@ using namespace Microsoft::WRL;
 #define RECT_WIDTH(r) (r.right - r.left)
 #define RECT_HEIGHT(r) (r.bottom - r.top)
 
+struct AppSettings
+{
+	UINT gameWidth;
+	UINT gameHeight;
+	UINT blurDownscale;
+	UINT blurPasses;
+	UINT updateInterval;
+	bool mirrored;
+};
+
 class TextureView
 {
 public:
@@ -46,6 +56,41 @@ public:
 		m_srv = nullptr;
 		m_rtv = nullptr;
 	}
+	HRESULT RecreateTexture(ID3D11Device* device, DXGI_FORMAT format, UINT width, UINT height)
+	{
+		HRESULT hr = S_OK;
+		if (GetTexture())
+		{
+			ID3D11Texture2D* texture = GetTexture();
+			D3D11_TEXTURE2D_DESC desc;
+			texture->GetDesc(&desc);
+
+			if (desc.Format != format || desc.Width != width || desc.Height != height)
+			{
+				Clear();
+			}
+		}
+		if (!GetTexture())
+		{
+			ID3D11Texture2D* texture = nullptr;
+			D3D11_TEXTURE2D_DESC desc = {};
+			desc.Width = width;
+			desc.Height = height;
+			desc.MipLevels = 1;
+			desc.ArraySize = 1;
+			desc.Format = format;
+			desc.SampleDesc.Count = 1;
+			desc.SampleDesc.Quality = 0;
+			desc.Usage = D3D11_USAGE_DEFAULT;
+			desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+			desc.CPUAccessFlags = 0;
+			desc.MiscFlags = 0;
+			hr = device->CreateTexture2D(&desc, nullptr, &texture);
+			CreateViews(device, texture);
+		}
+		return hr;
+	}
+
 	ID3D11Texture2D* GetTexture() const
 	{
 		return m_texture.Get();

@@ -6,19 +6,12 @@
 #include "shaders/copy.h"
 #include "shaders/blur.h"
 
-struct AmbientLightSettings
-{
-	UINT gameWidth;
-	UINT gameHeight;
-	UINT blurPasses;
-	UINT updateInterval;
-	bool mirrored;
-};
+
 
 class AmbientLight
 {
 public:
-	AmbientLight(const AmbientLightSettings& settings);
+	AmbientLight(const AppSettings& settings);
 	~AmbientLight();
 
 	HRESULT Initialize(HWND hwnd);
@@ -34,7 +27,8 @@ private:
 	ComPtr<IDCompositionVisual> m_dcompVisual;
 
 	DesktopCapture m_capture;
-	Blur m_blur;
+	Blur m_blurDownscale;
+	Blur m_blurPre;
 	Copy m_copy;
 
 	UINT m_gameWidth;
@@ -47,6 +41,7 @@ private:
 	UINT m_updateInterval;
 
 	TextureView m_gameTexture;
+	TextureView m_gameTexture1;
 	TextureView m_offscreen1;
 	TextureView m_offscreen2;
 	TextureView m_offscreen3;
