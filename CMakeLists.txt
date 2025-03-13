@@ -12,12 +12,17 @@ endif()
 project ("ambientlight")
 
 set(SRC
+	app.cpp
 	ambientlight.cpp
-	ambientlight.h
+	capture.cpp
+	present.cpp
+	shaders/copy.cpp
+	shaders/blur.cpp
 )
 
 # Add source to this project's executable.
 add_executable (ambientlight WIN32 ${SRC})
+
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET ambientlight PROPERTY CXX_STANDARD 20)
