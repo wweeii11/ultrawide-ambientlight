@@ -5,7 +5,7 @@
 #include "dxgi1_2.h"
 #include "dxgi1_3.h"
 #include "wrl/client.h"
-#include "directxtk/SimpleMath.h"
+#include "SimpleMath.h"
 #include <string>
 
 using namespace Microsoft::WRL;

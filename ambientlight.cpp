@@ -6,14 +6,17 @@
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dcomp.lib")
 
-AmbientLight::AmbientLight(UINT gameWidth, UINT gameHeight)
+AmbientLight::AmbientLight(const AmbientLightSettings& settings)
 {
-	m_gameWidth = gameWidth;
-	m_gameHeight = gameHeight;
+	m_gameWidth = settings.gameWidth;
+	m_gameHeight = settings.gameHeight;
 	m_windowWidth = 0;
 	m_windowHeight = 0;
 	m_blurSize = 64;
 	m_hwnd = nullptr;
+	m_mirror = settings.mirrored;
+	m_blurPasses = settings.blurPasses;
+	m_updateInterval = settings.updateInterval;
 }
 
 AmbientLight::~AmbientLight()
@@ -46,6 +49,13 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 	m_windowWidth = RECT_WIDTH(windowRect);
 	m_windowHeight = RECT_HEIGHT(windowRect);
 
+	// if missing config, setting default game size to 16:9
+	if (m_gameWidth == 0 || m_gameHeight == 0)
+	{
+		m_gameHeight = m_windowHeight;
+		m_gameWidth = m_gameHeight * 16 / 9;
+	}
+
 	// create swap chain
 	DXGI_SWAP_CHAIN_DESC1 scd = {};
 	scd.Width = m_windowWidth;
@@ -58,9 +68,6 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 	scd.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
 	scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
 	scd.Scaling = DXGI_SCALING_STRETCH;
-
-	//hr = dxgiFactory2->CreateSwapChainForHwnd(m_device.Get(), hwnd, &scd, nullptr, nullptr, &m_swapchain);
-	//RETURN_IF_FAILED(hr);
 
 	hr = dxgiFactory2->CreateSwapChainForComposition(m_device.Get(), &scd, nullptr, &m_swapchain);
 	RETURN_IF_FAILED(hr);
@@ -122,10 +129,9 @@ HRESULT AmbientLight::RecreateTexture(DXGI_FORMAT format, UINT width, UINT heigh
 		desc.CPUAccessFlags = 0;
 		desc.MiscFlags = 0;
 		hr = m_device->CreateTexture2D(&desc, nullptr, &texture);
-		RETURN_IF_FAILED(hr);
-
 		textureview.CreateViews(m_device.Get(), texture);
 	}
+	return hr;
 }
 
 HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
@@ -171,13 +177,10 @@ void AmbientLight::RenderEffects()
 		game_box.front = 0;
 		game_box.back = 1;
 
-		// Create source texture (in this example, we create a simple texture)
 		m_context->CopySubresourceRegion(m_gameTexture.GetTexture(), 0, 0, 0, 0, desktopTexture.Get(), 0, &game_box);
-		//m_copy.Apply(m_gameTexture_thumb, m_gameTexture);
-		m_copy.Apply(m_offscreen1, m_gameTexture);
+		m_copy.Apply(m_offscreen1, m_gameTexture, m_mirror);
 
-		int blur_passes = 2;
-		for (int i = 0; i < blur_passes; i++)
+		for (UINT i = 0; i < m_blurPasses; i++)
 		{
 			m_blur.Apply(m_offscreen2, m_offscreen1, Blur::BlurDirection::BlurHorizontal);
 			m_blur.Apply(m_offscreen1, m_offscreen2, Blur::BlurDirection::BlurVertical);
@@ -211,9 +214,9 @@ void AmbientLight::Present()
 	ComPtr<ID3D11Texture2D> backBuffer;
 	m_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), &backBuffer);
 
-	m_context->CopySubresourceRegion(backBuffer.Get(), 0, dst_left.left, dst_left.top, 0, m_offscreen3.GetTexture(), 0, &dst_left);
-	m_context->CopySubresourceRegion(backBuffer.Get(), 0, dst_right.left, dst_right.top, 0, m_offscreen3.GetTexture(), 0, &dst_right);
+	m_context->CopySubresourceRegion(backBuffer.Get(), 0, dst_left.left, dst_left.top, 0, m_offscreen3.GetTexture(), 0, m_mirror? &dst_right : &dst_left);
+	m_context->CopySubresourceRegion(backBuffer.Get(), 0, dst_right.left, dst_right.top, 0, m_offscreen3.GetTexture(), 0, m_mirror ? &dst_left : &dst_right);
 
-	m_swapchain->Present(1, 0);
+	m_swapchain->Present(m_updateInterval, 0);
 }
 

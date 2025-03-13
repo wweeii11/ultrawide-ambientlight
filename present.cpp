@@ -22,7 +22,7 @@ void PresentWindow::Create(HINSTANCE hInstance, AmbientLight* render)
 
 
 	// use direct composition
-	DWORD dwExStyle = WS_EX_NOREDIRECTIONBITMAP | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOPMOST;
+	DWORD dwExStyle = WS_EX_NOREDIRECTIONBITMAP | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOPMOST;
 	//DWORD dwExStyle = 0; //WS_EX_TRANSPARENT | WS_EX_LAYERED;
 
 	// frameless
@@ -41,7 +41,7 @@ void PresentWindow::Create(HINSTANCE hInstance, AmbientLight* render)
 		render
 	);
 
-	SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+	SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE);
 
 	// do not capture
 	SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);

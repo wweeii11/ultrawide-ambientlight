@@ -36,10 +36,16 @@ const char* COPY_PS = R"(
 Texture2D txSource : register(t0);
 SamplerState samLinear : register(s0);
 
-float4 PS(float4 Pos : SV_POSITION, float2 Tex : TEXCOORD0) : SV_Target
+float4 main(float4 Pos : SV_POSITION, float2 Tex : TEXCOORD0) : SV_Target
 {
     // Apply bilinear sampling when reading from the source texture
     return txSource.Sample(samLinear, Tex);
+}
+
+float4 main_hflip(float4 Pos : SV_POSITION, float2 Tex : TEXCOORD0) : SV_Target
+{
+    // Apply bilinear sampling when reading from the source texture
+    return txSource.Sample(samLinear, float2(1.0 - Tex.x, Tex.y));
 }
 
 )";
@@ -88,13 +94,20 @@ HRESULT Copy::Initialize(ComPtr<ID3D11Device> device)
 
     // Compile and create pixel shader
     ID3DBlob* psBlob = nullptr;
-    hr = D3DCompile(COPY_PS, strlen(COPY_PS), "PS", nullptr, nullptr, "PS", "ps_4_0", 0, 0, &psBlob, &errorBlob);
+    hr = D3DCompile(COPY_PS, strlen(COPY_PS), "PS", nullptr, nullptr, "main", "ps_4_0", 0, 0, &psBlob, &errorBlob);
     RETURN_IF_FAILED(hr);
 
     hr = device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &m_pixelShader);
     psBlob->Release();
     RETURN_IF_FAILED(hr);
-    
+
+    hr = D3DCompile(COPY_PS, strlen(COPY_PS), "PS", nullptr, nullptr, "main_hflip", "ps_4_0", 0, 0, &psBlob, &errorBlob);
+    RETURN_IF_FAILED(hr);
+
+    hr = device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &m_pixelShader_hflip);
+    psBlob->Release();
+    RETURN_IF_FAILED(hr);
+
     // Define a simple quad with texture coordinates
     Vertex quadVertices[] =
     {
@@ -128,7 +141,7 @@ HRESULT Copy::Initialize(ComPtr<ID3D11Device> device)
 	return hr;
 }
 
-HRESULT Copy::Apply(TextureView target, TextureView source)
+HRESULT Copy::Apply(TextureView target, TextureView source, bool hflip)
 {
     HRESULT hr = S_OK;
 
@@ -136,8 +149,8 @@ HRESULT Copy::Apply(TextureView target, TextureView source)
 	target.GetTexture()->GetDesc(&target_desc);
 
     D3D11_VIEWPORT vp;
-    vp.Width = target_desc.Width;
-    vp.Height = target_desc.Height;
+    vp.Width = (float)target_desc.Width;
+    vp.Height = (float)target_desc.Height;
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
     vp.TopLeftX = 0;
@@ -160,7 +173,11 @@ HRESULT Copy::Apply(TextureView target, TextureView source)
     m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 
 	m_context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
-	m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
+
+    if (hflip)
+        m_context->PSSetShader(m_pixelShader_hflip.Get(), nullptr, 0); 
+    else
+        m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
 
 	m_context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
 

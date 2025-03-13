@@ -6,10 +6,19 @@
 #include "shaders/copy.h"
 #include "shaders/blur.h"
 
+struct AmbientLightSettings
+{
+	UINT gameWidth;
+	UINT gameHeight;
+	UINT blurPasses;
+	UINT updateInterval;
+	bool mirrored;
+};
+
 class AmbientLight
 {
 public:
-	AmbientLight(UINT gameWidth, UINT gameHeight);
+	AmbientLight(const AmbientLightSettings& settings);
 	~AmbientLight();
 
 	HRESULT Initialize(HWND hwnd);
@@ -33,6 +42,9 @@ private:
 	UINT m_windowWidth;
 	UINT m_windowHeight;
 	UINT m_blurSize;
+	UINT m_blurPasses;
+	bool m_mirror;
+	UINT m_updateInterval;
 
 	TextureView m_gameTexture;
 	TextureView m_offscreen1;
