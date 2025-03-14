@@ -249,14 +249,14 @@ HRESULT Blur::Initialize(ComPtr<ID3D11Device> device, UINT width, UINT height)
 
     return S_OK;
 }
-HRESULT Blur::Apply(TextureView target, TextureView source, BlurDirection direction)
+HRESULT Blur::Apply(TextureView target, UINT passes)
 {
     HRESULT hr = S_OK;
 
     D3D11_TEXTURE2D_DESC target_desc = {};
     target.GetTexture()->GetDesc(&target_desc);
 
-    float overlap = (float)target_desc.Width * 0.01f;
+    m_tempTexture.RecreateTexture(m_device.Get(), target_desc.Format, target_desc.Width, target_desc.Height);
 
     D3D11_VIEWPORT vp;
     vp.Width = (float)target_desc.Width;
@@ -266,6 +266,22 @@ HRESULT Blur::Apply(TextureView target, TextureView source, BlurDirection direct
     vp.TopLeftX = 0;
     vp.TopLeftY = 0;
     m_context->RSSetViewports(1, &vp);
+
+    for (UINT i = 0; i < passes; i++)
+    {
+        DoBlurPass(m_tempTexture, target, BlurHorizontal);
+        DoBlurPass(target, m_tempTexture, BlurVertical);
+    }
+
+    return hr;
+}
+
+HRESULT Blur::DoBlurPass(TextureView target, TextureView source, BlurDirection direction)
+{
+    HRESULT hr = S_OK;
+
+    D3D11_TEXTURE2D_DESC target_desc = {};
+    target.GetTexture()->GetDesc(&target_desc);
 
     // Update the constant buffer
     if (direction == BlurHorizontal)

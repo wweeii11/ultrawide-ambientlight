@@ -40,13 +40,13 @@ private:
 	bool m_mirror;
 	UINT m_updateInterval;
 
+	// render effect at top/bottom of screen instead of left/right
+	bool m_topbottom;
+
 	TextureView m_gameTexture;
-	TextureView m_gameTexture1;
 	TextureView m_offscreen1;
-	TextureView m_offscreen2;
 	TextureView m_offscreen3;
 
-	HRESULT RecreateTexture(DXGI_FORMAT format, UINT width, UINT height, TextureView &textureview);
 	HRESULT CreateOffscreen(DXGI_FORMAT format);
 
 	void RenderEffects();
