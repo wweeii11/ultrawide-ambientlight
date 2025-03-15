@@ -16,13 +16,20 @@ set(SRC
 	ambientlight.cpp
 	capture.cpp
 	present.cpp
+	settings.cpp
 	shaders/copy.cpp
 	shaders/blur.cpp
+	imgui/imgui.cpp
+	imgui/imgui_draw.cpp
+	imgui/imgui_tables.cpp
+	imgui/imgui_widgets.cpp
+	imgui/backends/imgui_impl_dx11.cpp
+	imgui/backends/imgui_impl_win32.cpp
 )
 
 # Add source to this project's executable.
 add_executable (ambientlight WIN32 ${SRC})
-
+target_include_directories(ambientlight PRIVATE "imgui")
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET ambientlight PROPERTY CXX_STANDARD 20)

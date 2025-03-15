@@ -3,25 +3,122 @@
 
 #include "ambientlight.h"
 
+#include "imgui/imgui.h"
+#include "imgui/backends/imgui_impl_win32.h"
+#include "imgui/backends/imgui_impl_dx11.h"
+
+
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dcomp.lib")
 
-AmbientLight::AmbientLight(const AppSettings& settings)
+AmbientLight::AmbientLight()
 {
-	m_gameWidth = settings.gameWidth;
-	m_gameHeight = settings.gameHeight;
+	m_gameWidth = 0;
+	m_gameHeight = 0;
 	m_windowWidth = 0;
 	m_windowHeight = 0;
+	m_effectWidth = 0;
+	m_effectHeight = 0;
+	m_effectZoom = 0;
+	m_blurSize = 0;
+	m_blurPasses = 0;
+	m_mirror = false;
+	m_updateInterval = 2;
 	m_hwnd = nullptr;
-	m_mirror = settings.mirrored;
-	m_blurPasses = settings.blurPasses;
-	m_blurSize = settings.blurDownscale;
-	m_updateInterval = settings.updateInterval;
-	m_topbottom = false;
 }
 
 AmbientLight::~AmbientLight()
 {
+}
+
+// Forward declare message handler from imgui_impl_win32.cpp
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+LRESULT AmbientLight::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	if (ImGui::GetCurrentContext() == nullptr)
+		return 0;
+
+	switch (message)
+	{
+	case WM_KEYDOWN:
+	{
+		int pressed = (int)wParam;
+		if (pressed == VK_ESCAPE)
+		{
+			ShowConfig(!m_showConfig);
+			return 0;
+		}
+	}
+	}
+
+	return ImGui_ImplWin32_WndProcHandler(hwnd, message, wParam, lParam);
+}
+
+void AmbientLight::UpdateSettings()
+{
+	UINT width = m_settings.gameWidth;
+	UINT height = m_settings.gameHeight;
+	bool isAspectRatio = m_settings.isAspectRatio;
+
+	m_mirror = m_settings.mirrored;
+	m_blurPasses = m_settings.blurPasses;
+	m_blurSize = m_settings.blurDownscale;
+	m_updateInterval = m_settings.updateInterval;
+	m_topbottom = false;
+
+	if (m_hwnd)
+	{
+		// if missing config, setting default game size to 16:9
+		if (width == 0 || height == 0)
+		{
+			isAspectRatio = true;
+			width = 16;
+			height = 9;
+		}
+
+		// use the resolution as is for cropping the game image
+		if (!isAspectRatio)
+		{
+			m_gameWidth = width;
+			m_gameHeight = height;
+		}
+		else
+		{
+			// use the width/height as aspect ratio, and calculate the game size base on the desktop size
+			m_gameHeight = m_windowHeight;
+			m_gameWidth = m_gameHeight * width / height;
+
+			if (m_gameWidth > m_windowWidth)
+			{
+				m_gameWidth = m_windowWidth;
+				m_gameHeight = m_gameWidth * height / width;
+			}
+		}
+
+
+		float gameAspect = (float)m_gameWidth / (float)m_gameHeight;
+		float windowAspect = (float)m_windowWidth / (float)m_windowHeight;
+		if (gameAspect > windowAspect)
+		{
+			m_topbottom = true;
+			m_effectWidth = m_windowWidth;
+			m_effectHeight = (m_windowHeight - m_gameHeight) / 2;
+		}
+		else
+		{
+			m_topbottom = false;
+			m_effectWidth = (m_windowWidth - m_gameWidth) / 2;
+			m_effectHeight = m_windowHeight;
+		}
+
+		m_effectZoom = 16;
+
+		m_blurPre.Initialize(m_device, m_gameWidth, m_gameHeight);
+		m_blurDownscale.Initialize(m_device, m_blurSize, m_blurSize);
+
+		CreateOffscreen(DXGI_FORMAT_B8G8R8A8_UNORM);
+	}
 }
 
 HRESULT AmbientLight::Initialize(HWND hwnd)
@@ -49,36 +146,6 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 	GetWindowRect(hwnd, &windowRect);
 	m_windowWidth = RECT_WIDTH(windowRect);
 	m_windowHeight = RECT_HEIGHT(windowRect);
-
-	// if missing config, setting default game size to 16:9
-	if (m_gameWidth == 0 || m_gameHeight == 0)
-	{
-		m_gameHeight = m_windowHeight;
-		m_gameWidth = m_gameHeight * 16 / 9;
-
-		if (m_gameWidth > m_windowWidth)
-		{
-			m_gameWidth = m_windowWidth;
-			m_gameHeight = m_gameWidth * 9 / 16;
-		}
-	}
-
-	float gameAspect = (float)m_gameWidth / (float)m_gameHeight;
-	float windowAspect = (float)m_windowWidth / (float)m_windowHeight;
-	if (gameAspect > windowAspect)
-	{
-		m_topbottom = true;
-		m_effectWidth = m_windowWidth;
-		m_effectHeight = (m_windowHeight - m_gameHeight) / 2;
-	}
-	else
-	{
-		m_topbottom = false;
-		m_effectWidth = (m_windowWidth - m_gameWidth) / 2;
-		m_effectHeight = m_windowHeight;
-	}
-
-	m_effectZoom = 16;
 
 	// create swap chain
 	DXGI_SWAP_CHAIN_DESC1 scd = {};
@@ -114,17 +181,28 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 	hr = m_dcompDevice->Commit();
 	RETURN_IF_FAILED(hr);
 
-	CreateOffscreen(DXGI_FORMAT_B8G8R8A8_UNORM);
-
 	hr = m_capture.Initialize(m_device);
 	m_copy.Initialize(m_device);
 
-	m_blurPre.Initialize(m_device, m_gameWidth, m_gameHeight);
-	m_blurDownscale.Initialize(m_device, m_blurSize, m_blurSize);
+	UpdateSettings();
+
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO();
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+
+	// Setup Dear ImGui style
+	ImGui::StyleColorsDark();
+
+	// Setup Platform/Renderer backends
+	ImGui_ImplWin32_Init(hwnd);
+	ImGui_ImplDX11_Init(m_device.Get(), m_context.Get());
+
+	ShowConfig(true);
 
 	return 0;
 }
-
 
 HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 {
@@ -144,54 +222,154 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 
 void AmbientLight::Render()
 {
-	m_capture.Capture();
+	bool changed = ReadSettings(m_settings);
+	if (changed)
+		UpdateSettings();
 
-	RenderEffects();
-	Present();
+	m_capture.Capture();
+	ComPtr<ID3D11Texture2D> desktopTexture = m_capture.GetDesktopTexture();
+	if (desktopTexture)
+	{
+		RenderEffects();
+		RenderConfig();
+		Present();
+	}
 }
 
 void AmbientLight::RenderEffects()
 {
 	ComPtr<ID3D11Texture2D> desktopTexture = m_capture.GetDesktopTexture();
-	if (desktopTexture)
+
+	ComPtr<IDXGISurface> surface;
+	desktopTexture.As(&surface);
+	DXGI_SURFACE_DESC desc;
+	surface->GetDesc(&desc);
+
+	UINT crop_width = (desc.Width - m_gameWidth) / 2;
+	UINT crop_height = (desc.Height - m_gameHeight) / 2;
+
+	D3D11_BOX game_box = {};
+	game_box.left = crop_width;
+	game_box.top = crop_height;
+	game_box.right = desc.Width - crop_width;
+	game_box.bottom = desc.Height - crop_height;
+	game_box.front = 0;
+	game_box.back = 1;
+
+	m_context->CopySubresourceRegion(m_gameTexture.GetTexture(), 0, 0, 0, 0, desktopTexture.Get(), 0, &game_box);
+
+	m_blurPre.Apply(m_gameTexture, m_blurPasses);
+
+	m_copy.Apply(m_offscreen1, m_gameTexture);
+
+	m_blurDownscale.Apply(m_offscreen1, m_blurPasses);
+
+	Copy::Flip flip = Copy::FlipNone;
+	if (m_mirror)
 	{
-		ComPtr<IDXGISurface> surface;
-		desktopTexture.As(&surface);
-		DXGI_SURFACE_DESC desc;
-		surface->GetDesc(&desc);
-
-		UINT crop_width = (desc.Width - m_gameWidth) / 2;
-		UINT crop_height = (desc.Height - m_gameHeight) / 2;
-
-		D3D11_BOX game_box = {};
-		game_box.left = crop_width;
-		game_box.top = crop_height;
-		game_box.right = desc.Width - crop_width;
-		game_box.bottom = desc.Height - crop_height;
-		game_box.front = 0;
-		game_box.back = 1;
-
-		m_context->CopySubresourceRegion(m_gameTexture.GetTexture(), 0, 0, 0, 0, desktopTexture.Get(), 0, &game_box);
-
-		m_blurPre.Apply(m_gameTexture, m_blurPasses);
-
-		m_copy.Apply(m_offscreen1, m_gameTexture);
-
-		m_blurDownscale.Apply(m_offscreen1, m_blurPasses);
-
-		Copy::Flip flip = Copy::FlipNone;
-		if (m_mirror)
-		{
-			flip = m_topbottom ? Copy::FlipVertical : Copy::FlipHorizontal;
-		}
-		m_copy.Apply(m_offscreen3, m_offscreen1, flip);
+		flip = m_topbottom ? Copy::FlipVertical : Copy::FlipHorizontal;
 	}
+	m_copy.Apply(m_offscreen3, m_offscreen1, flip);
+}
+
+void AmbientLight::RenderConfig()
+{
+	if (!m_showConfig)
+		return;
+
+	// Start the Dear ImGui frame
+	ImGui_ImplDX11_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+
+	ImGuiIO& io = ImGui::GetIO();
+
+	ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+	center.y /= 2;
+	ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+	bool open = true;
+	if (ImGui::Begin("Ambient light", &open, 0))
+		ShowConfig(open);
+
+	ImGui::Text("Press Esc to show or hide this config window");
+
+	if (ImGui::InputInt("Blur Passes", (int*)&m_settings.blurPasses, 1, 1, ImGuiInputTextFlags_CharsDecimal))
+	{
+		m_settings.blurPasses = max(min(m_settings.blurPasses, 128), 0);
+		SaveSettings(m_settings);
+	}
+
+	int blur_downscale_step = 16;
+	if (ImGui::InputInt("Blur Downscale", (int*)&m_settings.blurDownscale, 16, 16, ImGuiInputTextFlags_CharsDecimal))
+	{
+		m_settings.blurDownscale = max(min(m_settings.blurDownscale, 1024), 16);
+		SaveSettings(m_settings);
+	}
+
+	if (ImGui::SliderInt("Update Interval", (int*)&m_settings.updateInterval, 1, 4))
+		SaveSettings(m_settings);
+
+	if (ImGui::Checkbox("Mirrored", &m_settings.mirrored))
+		SaveSettings(m_settings);
+
+	if (ImGui::BeginCombo("Resolution", m_settings.resolutions.current.c_str(), 0))
+	{
+		for (auto& res : m_settings.resolutions.available)
+		{
+			bool selected = m_settings.resolutions.current == res.name;
+			if (ImGui::Selectable(res.name.c_str(), &selected))
+			{
+				m_settings.resolutions.current = res.name;
+				SaveSettings(m_settings);
+			}
+		}
+		ImGui::EndCombo();
+	}
+
+	bool updateResolution = false;
+	int res_input[2] = { m_settings.gameWidth, m_settings.gameHeight };
+	if (ImGui::InputInt2("", res_input, ImGuiInputTextFlags_CharsDecimal))
+		updateResolution = true;
+
+	if (ImGui::Checkbox("Is Aspect Ratio", &m_settings.isAspectRatio))
+		updateResolution = true;
+
+	if (updateResolution)
+	{
+		for (auto& res : m_settings.resolutions.available)
+		{
+			if (m_settings.resolutions.current == res.name)
+			{
+				res.width = res_input[0];
+				res.height = res_input[1];
+				res.isAspectRatio = m_settings.isAspectRatio;
+				break;
+			}
+		}
+
+		SaveSettings(m_settings);
+	}
+
+	if (ImGui::Button("Exit"))
+		PostQuitMessage(0);
+
+	ImGui::Text("%.1f FPS (%.3f ms/frame)", io.Framerate, 1000.0f / io.Framerate);
+	ImGui::End();
+
+	ImGui::Render();
 }
 
 void AmbientLight::Present()
 {
 	ComPtr<ID3D11Texture2D> backBuffer;
 	m_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), &backBuffer);
+
+	ComPtr<ID3D11RenderTargetView> rtv_back;
+	m_device->CreateRenderTargetView(backBuffer.Get(), nullptr, rtv_back.GetAddressOf());
+	m_context->OMSetRenderTargets(1, rtv_back.GetAddressOf(), nullptr);
+	float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+	m_context->ClearRenderTargetView(rtv_back.Get(), color);
 
 	if (!m_topbottom)
 	{
@@ -253,6 +431,18 @@ void AmbientLight::Present()
 			m_offscreen3.GetTexture(), 0,
 			m_mirror ? &src_top : &src_bottom);
 	}
+
+	if (m_showConfig)
+		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
 	m_swapchain->Present(m_updateInterval, 0);
 }
 
+void AmbientLight::ShowConfig(bool show)
+{
+	m_showConfig = show;
+	DWORD dwExStyle = GetWindowLong(m_hwnd, GWL_EXSTYLE);
+
+	dwExStyle = show ? dwExStyle & ~WS_EX_TRANSPARENT : dwExStyle | WS_EX_TRANSPARENT;
+	SetWindowLong(m_hwnd, GWL_EXSTYLE, dwExStyle);
+}
