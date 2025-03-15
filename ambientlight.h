@@ -35,6 +35,9 @@ private:
 	UINT m_gameHeight;
 	UINT m_windowWidth;
 	UINT m_windowHeight;
+	UINT m_effectWidth;
+	UINT m_effectHeight;
+	UINT m_effectZoom;
 	UINT m_blurSize;
 	UINT m_blurPasses;
 	bool m_mirror;
