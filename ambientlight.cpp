@@ -17,6 +17,7 @@ AmbientLight::AmbientLight(const AppSettings& settings)
 	m_blurPasses = settings.blurPasses;
 	m_blurSize = settings.blurDownscale;
 	m_updateInterval = settings.updateInterval;
+	m_topbottom = false;
 }
 
 AmbientLight::~AmbientLight()
@@ -54,7 +55,30 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 	{
 		m_gameHeight = m_windowHeight;
 		m_gameWidth = m_gameHeight * 16 / 9;
+
+		if (m_gameWidth > m_windowWidth)
+		{
+			m_gameWidth = m_windowWidth;
+			m_gameHeight = m_gameWidth * 9 / 16;
+		}
 	}
+
+	float gameAspect = (float)m_gameWidth / (float)m_gameHeight;
+	float windowAspect = (float)m_windowWidth / (float)m_windowHeight;
+	if (gameAspect > windowAspect)
+	{
+		m_topbottom = true;
+		m_effectWidth = m_windowWidth;
+		m_effectHeight = (m_windowHeight - m_gameHeight) / 2;
+	}
+	else
+	{
+		m_topbottom = false;
+		m_effectWidth = (m_windowWidth - m_gameWidth) / 2;
+		m_effectHeight = m_windowHeight;
+	}
+
+	m_effectZoom = 16;
 
 	// create swap chain
 	DXGI_SWAP_CHAIN_DESC1 scd = {};
@@ -97,7 +121,7 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 
 	m_blurPre.Initialize(m_device, m_gameWidth, m_gameHeight);
 	m_blurDownscale.Initialize(m_device, m_blurSize, m_blurSize);
-	
+
 	return 0;
 }
 
@@ -106,7 +130,6 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 {
 	HRESULT hr = S_OK;
 	m_gameTexture.RecreateTexture(m_device.Get(), format, m_gameWidth, m_gameHeight);
-	m_gameTexture1.RecreateTexture(m_device.Get(), format, m_gameWidth, m_gameHeight);
 
 	float aspect = (float)m_gameWidth / (float)m_gameHeight;
 
@@ -114,9 +137,8 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 	UINT down_height = m_blurSize;
 
 	m_offscreen1.RecreateTexture(m_device.Get(), format, down_width, down_height);
-	m_offscreen2.RecreateTexture(m_device.Get(), format, down_width, down_height);
 
-	m_offscreen3.RecreateTexture(m_device.Get(), format, m_windowWidth, m_windowHeight);
+	m_offscreen3.RecreateTexture(m_device.Get(), format, m_windowWidth + m_effectZoom * 2, m_windowHeight + m_effectZoom * 2);
 	return hr;
 }
 
@@ -138,64 +160,99 @@ void AmbientLight::RenderEffects()
 		DXGI_SURFACE_DESC desc;
 		surface->GetDesc(&desc);
 
-		UINT black_bar_width = (desc.Width - m_gameWidth) / 2;
-		UINT black_bar_height = (desc.Height - m_gameHeight) / 2;
+		UINT crop_width = (desc.Width - m_gameWidth) / 2;
+		UINT crop_height = (desc.Height - m_gameHeight) / 2;
 
 		D3D11_BOX game_box = {};
-		game_box.left = black_bar_width;
-		game_box.top = black_bar_height;
-		game_box.right = desc.Width - black_bar_width;
-		game_box.bottom = desc.Height - black_bar_height;
+		game_box.left = crop_width;
+		game_box.top = crop_height;
+		game_box.right = desc.Width - crop_width;
+		game_box.bottom = desc.Height - crop_height;
 		game_box.front = 0;
 		game_box.back = 1;
 
 		m_context->CopySubresourceRegion(m_gameTexture.GetTexture(), 0, 0, 0, 0, desktopTexture.Get(), 0, &game_box);
 
-		for (UINT i = 0; i < m_blurPasses; i++)
-		{
-			m_blurPre.Apply(m_gameTexture1, m_gameTexture, Blur::BlurDirection::BlurHorizontal);
-			m_blurPre.Apply(m_gameTexture, m_gameTexture1, Blur::BlurDirection::BlurVertical);
-		}
+		m_blurPre.Apply(m_gameTexture, m_blurPasses);
 
 		m_copy.Apply(m_offscreen1, m_gameTexture);
 
-		for (UINT i = 0; i < m_blurPasses; i++)
-		{
-			m_blurDownscale.Apply(m_offscreen2, m_offscreen1, Blur::BlurDirection::BlurHorizontal);
-			m_blurDownscale.Apply(m_offscreen1, m_offscreen2, Blur::BlurDirection::BlurVertical);
-		}
+		m_blurDownscale.Apply(m_offscreen1, m_blurPasses);
 
-		m_copy.Apply(m_offscreen3, m_offscreen1, m_mirror);
+		Copy::Flip flip = Copy::FlipNone;
+		if (m_mirror)
+		{
+			flip = m_topbottom ? Copy::FlipVertical : Copy::FlipHorizontal;
+		}
+		m_copy.Apply(m_offscreen3, m_offscreen1, flip);
 	}
 }
 
 void AmbientLight::Present()
 {
-	UINT black_bar_width = (m_windowWidth - m_gameWidth) / 2;
-	UINT black_bar_height = (m_windowHeight - m_gameHeight) / 2;
-
-	D3D11_BOX dst_left = {};
-	dst_left.left = 0;
-	dst_left.right = black_bar_width;
-	dst_left.top = 0;
-	dst_left.bottom = m_windowHeight;
-	dst_left.front = 0;
-	dst_left.back = 1;
-
-	D3D11_BOX dst_right = {};
-	dst_right.left = m_windowWidth - black_bar_width;
-	dst_right.right = m_windowWidth;
-	dst_right.top = 0;
-	dst_right.bottom = m_windowHeight;
-	dst_right.front = 0;
-	dst_right.back = 1;
-
 	ComPtr<ID3D11Texture2D> backBuffer;
 	m_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), &backBuffer);
 
-	m_context->CopySubresourceRegion(backBuffer.Get(), 0, dst_left.left, dst_left.top, 0, m_offscreen3.GetTexture(), 0, m_mirror? &dst_right : &dst_left);
-	m_context->CopySubresourceRegion(backBuffer.Get(), 0, dst_right.left, dst_right.top, 0, m_offscreen3.GetTexture(), 0, m_mirror ? &dst_left : &dst_right);
+	if (!m_topbottom)
+	{
+		D3D11_BOX src_left = {};
+		src_left.left = m_effectZoom;
+		src_left.right = src_left.left + m_effectWidth;
+		src_left.top = m_effectZoom;
+		src_left.bottom = src_left.top + m_effectHeight;
+		src_left.front = 0;
+		src_left.back = 1;
 
+		D3D11_BOX src_right = {};
+		src_right.left = src_left.right + m_gameWidth;
+		src_right.right = src_right.left + m_effectWidth;
+		src_right.top = m_effectZoom;
+		src_right.bottom = src_right.top + m_effectHeight;
+		src_right.front = 0;
+		src_right.back = 1;
+
+		m_context->CopySubresourceRegion(
+			backBuffer.Get(), 0,
+			0, 0, 0,
+			m_offscreen3.GetTexture(), 0,
+			m_mirror ? &src_right : &src_left);
+
+		m_context->CopySubresourceRegion(
+			backBuffer.Get(), 0,
+			m_effectWidth + m_gameWidth, 0, 0,
+			m_offscreen3.GetTexture(), 0,
+			m_mirror ? &src_left : &src_right);
+	}
+	else
+	{
+		D3D11_BOX src_top = {};
+		src_top.left = m_effectZoom;
+		src_top.right = src_top.left + m_effectWidth;
+		src_top.top = m_effectZoom;
+		src_top.bottom = src_top.top + m_effectHeight;
+		src_top.front = 0;
+		src_top.back = 1;
+
+		D3D11_BOX src_bottom = {};
+		src_bottom.left = m_effectZoom;
+		src_bottom.right = src_bottom.left + m_effectWidth;
+		src_bottom.top = src_top.bottom + m_gameHeight;
+		src_bottom.bottom = src_bottom.top + m_effectHeight;
+		src_bottom.front = 0;
+		src_bottom.back = 1;
+
+		m_context->CopySubresourceRegion(
+			backBuffer.Get(), 0,
+			0, 0, 0,
+			m_offscreen3.GetTexture(), 0,
+			m_mirror ? &src_bottom : &src_top);
+
+		m_context->CopySubresourceRegion(
+			backBuffer.Get(), 0,
+			0, m_effectHeight + m_gameHeight, 0,
+			m_offscreen3.GetTexture(), 0,
+			m_mirror ? &src_top : &src_bottom);
+	}
 	m_swapchain->Present(m_updateInterval, 0);
 }
 

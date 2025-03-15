@@ -18,7 +18,7 @@ public:
 	Blur();
 	~Blur();
 	HRESULT Initialize(ComPtr<ID3D11Device> device, UINT width, UINT height);
-	HRESULT Apply(TextureView target, TextureView source, BlurDirection direction);
+	HRESULT Apply(TextureView target, UINT passes);
 private:
 	ComPtr<ID3D11Device> m_device;
 	ComPtr<ID3D11DeviceContext> m_context;
@@ -32,4 +32,7 @@ private:
 	ComPtr<ID3D11Buffer>             m_blurParamsWidth;
 	ComPtr<ID3D11Buffer>             m_blurParamsHeight;
 
+	TextureView m_tempTexture;
+
+	HRESULT DoBlurPass(TextureView target, TextureView source, BlurDirection direction);
 };

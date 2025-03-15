@@ -48,6 +48,11 @@ float4 main_hflip(float4 Pos : SV_POSITION, float2 Tex : TEXCOORD0) : SV_Target
     return txSource.Sample(samLinear, float2(1.0 - Tex.x, Tex.y));
 }
 
+float4 main_vflip(float4 Pos : SV_POSITION, float2 Tex : TEXCOORD0) : SV_Target
+{
+    // Apply bilinear sampling when reading from the source texture
+    return txSource.Sample(samLinear, float2(Tex.x, 1.0 - Tex.y));
+}
 )";
 
 struct Vertex
@@ -108,6 +113,13 @@ HRESULT Copy::Initialize(ComPtr<ID3D11Device> device)
     psBlob->Release();
     RETURN_IF_FAILED(hr);
 
+    hr = D3DCompile(COPY_PS, strlen(COPY_PS), "PS", nullptr, nullptr, "main_vflip", "ps_4_0", 0, 0, &psBlob, &errorBlob);
+    RETURN_IF_FAILED(hr);
+
+    hr = device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &m_pixelShader_vflip);
+    psBlob->Release();
+    RETURN_IF_FAILED(hr);
+
     // Define a simple quad with texture coordinates
     Vertex quadVertices[] =
     {
@@ -141,7 +153,7 @@ HRESULT Copy::Initialize(ComPtr<ID3D11Device> device)
 	return hr;
 }
 
-HRESULT Copy::Apply(TextureView target, TextureView source, bool hflip)
+HRESULT Copy::Apply(TextureView target, TextureView source, Flip flip)
 {
     HRESULT hr = S_OK;
 
@@ -174,11 +186,18 @@ HRESULT Copy::Apply(TextureView target, TextureView source, bool hflip)
 
 	m_context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
 
-    if (hflip)
-        m_context->PSSetShader(m_pixelShader_hflip.Get(), nullptr, 0); 
-    else
+    switch (flip)
+    {
+    case FlipHorizontal:
+        m_context->PSSetShader(m_pixelShader_hflip.Get(), nullptr, 0);
+        break;
+    case FlipVertical:
+        m_context->PSSetShader(m_pixelShader_vflip.Get(), nullptr, 0);
+        break;
+    default:
         m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
-
+    }
+    
 	m_context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
 
     ID3D11ShaderResourceView* srv = source.GetSRV();
