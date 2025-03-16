@@ -16,6 +16,7 @@ set(SRC
 	ambientlight.cpp
 	capture.cpp
 	present.cpp
+	settings.cpp
 	shaders/copy.cpp
 	shaders/blur.cpp
 )

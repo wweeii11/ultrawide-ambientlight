@@ -18,5 +18,4 @@ protected:
 	static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 private:
 	HWND m_hwnd;
-	RECT GetDesktopRect();
 };

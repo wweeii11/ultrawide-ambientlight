@@ -6,22 +6,95 @@
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dcomp.lib")
 
-AmbientLight::AmbientLight(const AppSettings& settings)
+AmbientLight::AmbientLight()
 {
-	m_gameWidth = settings.gameWidth;
-	m_gameHeight = settings.gameHeight;
+	m_gameWidth = 0;
+	m_gameHeight = 0;
 	m_windowWidth = 0;
 	m_windowHeight = 0;
+	m_effectWidth = 0;
+	m_effectHeight = 0;
+	m_effectZoom = 0;
+	m_blurSize = 0;
+	m_blurPasses = 0;
+	m_mirror = false;
+	m_updateInterval = 2;
 	m_hwnd = nullptr;
-	m_mirror = settings.mirrored;
-	m_blurPasses = settings.blurPasses;
-	m_blurSize = settings.blurDownscale;
-	m_updateInterval = settings.updateInterval;
-	m_topbottom = false;
 }
 
 AmbientLight::~AmbientLight()
 {
+}
+
+void AmbientLight::UpdateSettings()
+{
+	bool changed = ReadSettings(m_settings);
+
+	if (!changed)
+		return;
+
+	UINT width = m_settings.gameWidth;
+	UINT height = m_settings.gameHeight;
+	bool useAspect = m_settings.useAspectRatio;
+
+	m_mirror = m_settings.mirrored;
+	m_blurPasses = m_settings.blurPasses;
+	m_blurSize = m_settings.blurDownscale;
+	m_updateInterval = m_settings.updateInterval;
+	m_topbottom = false;
+	
+	if (m_hwnd)
+	{
+		// if missing config, setting default game size to 16:9
+		if (width == 0 || height == 0)
+		{
+			useAspect = true;
+			width = 16;
+			height = 9;
+		}
+
+		// use the resolution as is for cropping the game image
+		if (!useAspect)
+		{
+			m_gameWidth = width;
+			m_gameHeight = height;
+		}
+		else
+		{
+			// use the width/height as aspect ratio, and calculate the game size base on the desktop size
+			m_gameHeight = m_windowHeight;
+			m_gameWidth = m_gameHeight * width / height;
+
+			if (m_gameWidth > m_windowWidth)
+			{
+				m_gameWidth = m_windowWidth;
+				m_gameHeight = m_gameWidth * height / width;
+			}
+		}
+
+
+		float gameAspect = (float)m_gameWidth / (float)m_gameHeight;
+		float windowAspect = (float)m_windowWidth / (float)m_windowHeight;
+		if (gameAspect > windowAspect)
+		{
+			m_topbottom = true;
+			m_effectWidth = m_windowWidth;
+			m_effectHeight = (m_windowHeight - m_gameHeight) / 2;
+		}
+		else
+		{
+			m_topbottom = false;
+			m_effectWidth = (m_windowWidth - m_gameWidth) / 2;
+			m_effectHeight = m_windowHeight;
+		}
+
+		m_effectZoom = 16;
+
+		m_blurPre.Initialize(m_device, m_gameWidth, m_gameHeight);
+		m_blurDownscale.Initialize(m_device, m_blurSize, m_blurSize);
+
+		CreateOffscreen(DXGI_FORMAT_B8G8R8A8_UNORM);
+	}
 }
 
 HRESULT AmbientLight::Initialize(HWND hwnd)
@@ -49,36 +122,6 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 	GetWindowRect(hwnd, &windowRect);
 	m_windowWidth = RECT_WIDTH(windowRect);
 	m_windowHeight = RECT_HEIGHT(windowRect);
-
-	// if missing config, setting default game size to 16:9
-	if (m_gameWidth == 0 || m_gameHeight == 0)
-	{
-		m_gameHeight = m_windowHeight;
-		m_gameWidth = m_gameHeight * 16 / 9;
-
-		if (m_gameWidth > m_windowWidth)
-		{
-			m_gameWidth = m_windowWidth;
-			m_gameHeight = m_gameWidth * 9 / 16;
-		}
-	}
-
-	float gameAspect = (float)m_gameWidth / (float)m_gameHeight;
-	float windowAspect = (float)m_windowWidth / (float)m_windowHeight;
-	if (gameAspect > windowAspect)
-	{
-		m_topbottom = true;
-		m_effectWidth = m_windowWidth;
-		m_effectHeight = (m_windowHeight - m_gameHeight) / 2;
-	}
-	else
-	{
-		m_topbottom = false;
-		m_effectWidth = (m_windowWidth - m_gameWidth) / 2;
-		m_effectHeight = m_windowHeight;
-	}
-
-	m_effectZoom = 16;
 
 	// create swap chain
 	DXGI_SWAP_CHAIN_DESC1 scd = {};
@@ -114,17 +157,13 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 	hr = m_dcompDevice->Commit();
 	RETURN_IF_FAILED(hr);
 
-	CreateOffscreen(DXGI_FORMAT_B8G8R8A8_UNORM);
-
 	hr = m_capture.Initialize(m_device);
 	m_copy.Initialize(m_device);
 
-	m_blurPre.Initialize(m_device, m_gameWidth, m_gameHeight);
-	m_blurDownscale.Initialize(m_device, m_blurSize, m_blurSize);
+	UpdateSettings();
 
 	return 0;
 }
-
 
 HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 {
@@ -144,54 +183,63 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 
 void AmbientLight::Render()
 {
-	m_capture.Capture();
+	UpdateSettings();
 
-	RenderEffects();
-	Present();
+	m_capture.Capture();
+	ComPtr<ID3D11Texture2D> desktopTexture = m_capture.GetDesktopTexture();
+	if (desktopTexture)
+	{
+		RenderEffects();
+		Present();
+	}
 }
 
 void AmbientLight::RenderEffects()
 {
 	ComPtr<ID3D11Texture2D> desktopTexture = m_capture.GetDesktopTexture();
-	if (desktopTexture)
+
+	ComPtr<IDXGISurface> surface;
+	desktopTexture.As(&surface);
+	DXGI_SURFACE_DESC desc;
+	surface->GetDesc(&desc);
+
+	UINT crop_width = (desc.Width - m_gameWidth) / 2;
+	UINT crop_height = (desc.Height - m_gameHeight) / 2;
+
+	D3D11_BOX game_box = {};
+	game_box.left = crop_width;
+	game_box.top = crop_height;
+	game_box.right = desc.Width - crop_width;
+	game_box.bottom = desc.Height - crop_height;
+	game_box.front = 0;
+	game_box.back = 1;
+
+	m_context->CopySubresourceRegion(m_gameTexture.GetTexture(), 0, 0, 0, 0, desktopTexture.Get(), 0, &game_box);
+
+	m_blurPre.Apply(m_gameTexture, m_blurPasses);
+
+	m_copy.Apply(m_offscreen1, m_gameTexture);
+
+	m_blurDownscale.Apply(m_offscreen1, m_blurPasses);
+
+	Copy::Flip flip = Copy::FlipNone;
+	if (m_mirror)
 	{
-		ComPtr<IDXGISurface> surface;
-		desktopTexture.As(&surface);
-		DXGI_SURFACE_DESC desc;
-		surface->GetDesc(&desc);
-
-		UINT crop_width = (desc.Width - m_gameWidth) / 2;
-		UINT crop_height = (desc.Height - m_gameHeight) / 2;
-
-		D3D11_BOX game_box = {};
-		game_box.left = crop_width;
-		game_box.top = crop_height;
-		game_box.right = desc.Width - crop_width;
-		game_box.bottom = desc.Height - crop_height;
-		game_box.front = 0;
-		game_box.back = 1;
-
-		m_context->CopySubresourceRegion(m_gameTexture.GetTexture(), 0, 0, 0, 0, desktopTexture.Get(), 0, &game_box);
-
-		m_blurPre.Apply(m_gameTexture, m_blurPasses);
-
-		m_copy.Apply(m_offscreen1, m_gameTexture);
-
-		m_blurDownscale.Apply(m_offscreen1, m_blurPasses);
-
-		Copy::Flip flip = Copy::FlipNone;
-		if (m_mirror)
-		{
-			flip = m_topbottom ? Copy::FlipVertical : Copy::FlipHorizontal;
-		}
-		m_copy.Apply(m_offscreen3, m_offscreen1, flip);
+		flip = m_topbottom ? Copy::FlipVertical : Copy::FlipHorizontal;
 	}
+	m_copy.Apply(m_offscreen3, m_offscreen1, flip);
 }
 
 void AmbientLight::Present()
 {
 	ComPtr<ID3D11Texture2D> backBuffer;
 	m_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), &backBuffer);
+
+	ComPtr<ID3D11RenderTargetView> rtv_back;
+	m_device->CreateRenderTargetView(backBuffer.Get(), nullptr, rtv_back.GetAddressOf());
+	m_context->OMSetRenderTargets(1, rtv_back.GetAddressOf(), nullptr);
+	float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+	m_context->ClearRenderTargetView(rtv_back.Get(), color);
 
 	if (!m_topbottom)
 	{

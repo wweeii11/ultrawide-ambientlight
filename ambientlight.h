@@ -11,13 +11,18 @@
 class AmbientLight
 {
 public:
-	AmbientLight(const AppSettings& settings);
+	AmbientLight();
 	~AmbientLight();
 
+	void UpdateSettings();
+
 	HRESULT Initialize(HWND hwnd);
+
 	void Render();
 
 private:
+	AppSettings m_settings;
+
 	HWND m_hwnd;
 	ComPtr<ID3D11Device> m_device;
 	ComPtr<ID3D11DeviceContext> m_context;

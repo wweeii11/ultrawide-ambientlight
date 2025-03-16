@@ -8,22 +8,14 @@
 #include "SimpleMath.h"
 #include <string>
 
+#include "settings.h"
+
 using namespace Microsoft::WRL;
 
 #define RETURN_IF_FAILED(hr) if (FAILED(hr)) return hr;
 
 #define RECT_WIDTH(r) (r.right - r.left)
 #define RECT_HEIGHT(r) (r.bottom - r.top)
-
-struct AppSettings
-{
-	UINT gameWidth;
-	UINT gameHeight;
-	UINT blurDownscale;
-	UINT blurPasses;
-	UINT updateInterval;
-	bool mirrored;
-};
 
 class TextureView
 {

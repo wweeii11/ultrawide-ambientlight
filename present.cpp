@@ -29,7 +29,8 @@ void PresentWindow::Create(HINSTANCE hInstance, AmbientLight* render)
 	DWORD dwStyle = WS_POPUP;
 
 	// Create a window with the screen size
-	RECT desktopRect = GetDesktopRect();
+	RECT desktopRect;
+	GetWindowRect(GetDesktopWindow(), &desktopRect);
 	HWND hwnd = CreateWindowEx(dwExStyle,
 		L"ambientlight",
 		L"ambientlight",
@@ -102,11 +103,4 @@ LRESULT CALLBACK PresentWindow::WndProc(HWND hwnd, UINT message, WPARAM wParam, 
 	}
 
 	return DefWindowProc(hwnd, message, wParam, lParam);
-}
-
-RECT PresentWindow::GetDesktopRect()
-{
-	RECT desktopRect;
-	GetWindowRect(GetDesktopWindow(), &desktopRect);
-	return desktopRect;
 }
