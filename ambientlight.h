@@ -20,6 +20,8 @@ public:
 
 	void Render();
 
+	LRESULT WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+
 private:
 	AppSettings m_settings;
 
@@ -58,5 +60,9 @@ private:
 	HRESULT CreateOffscreen(DXGI_FORMAT format);
 
 	void RenderEffects();
+	void RenderConfig();
 	void Present();
+
+	void ShowConfig(bool show);
+	bool m_showConfig;
 };
