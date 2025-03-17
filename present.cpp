@@ -22,14 +22,14 @@ void PresentWindow::Create(HINSTANCE hInstance, AmbientLight* render)
 
 
 	// use direct composition
-	DWORD dwExStyle = WS_EX_NOREDIRECTIONBITMAP | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOPMOST;
-	//DWORD dwExStyle = 0; //WS_EX_TRANSPARENT | WS_EX_LAYERED;
+	DWORD dwExStyle = WS_EX_NOREDIRECTIONBITMAP | WS_EX_LAYERED | WS_EX_TOPMOST;
 
 	// frameless
 	DWORD dwStyle = WS_POPUP;
 
 	// Create a window with the screen size
-	RECT desktopRect = GetDesktopRect();
+	RECT desktopRect;
+	GetWindowRect(GetDesktopWindow(), &desktopRect);
 	HWND hwnd = CreateWindowEx(dwExStyle,
 		L"ambientlight",
 		L"ambientlight",
@@ -71,6 +71,9 @@ LRESULT CALLBACK PresentWindow::WndProc(HWND hwnd, UINT message, WPARAM wParam, 
 {
 	AmbientLight* pRender = reinterpret_cast<AmbientLight*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 
+	if (pRender && pRender->WndProc(hwnd, message, wParam, lParam))
+		return true;
+
 	switch (message)
 	{
 	case WM_CREATE:
@@ -101,12 +104,7 @@ LRESULT CALLBACK PresentWindow::WndProc(HWND hwnd, UINT message, WPARAM wParam, 
 		return 0;
 	}
 
+
 	return DefWindowProc(hwnd, message, wParam, lParam);
 }
 
-RECT PresentWindow::GetDesktopRect()
-{
-	RECT desktopRect;
-	GetWindowRect(GetDesktopWindow(), &desktopRect);
-	return desktopRect;
-}

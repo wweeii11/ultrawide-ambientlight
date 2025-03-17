@@ -11,13 +11,20 @@
 class AmbientLight
 {
 public:
-	AmbientLight(const AppSettings& settings);
+	AmbientLight();
 	~AmbientLight();
 
+	void UpdateSettings();
+
 	HRESULT Initialize(HWND hwnd);
+
 	void Render();
 
+	LRESULT WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+
 private:
+	AppSettings m_settings;
+
 	HWND m_hwnd;
 	ComPtr<ID3D11Device> m_device;
 	ComPtr<ID3D11DeviceContext> m_context;
@@ -53,5 +60,9 @@ private:
 	HRESULT CreateOffscreen(DXGI_FORMAT format);
 
 	void RenderEffects();
+	void RenderConfig();
 	void Present();
+
+	void ShowConfig(bool show);
+	bool m_showConfig;
 };
