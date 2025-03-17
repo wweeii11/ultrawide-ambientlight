@@ -9,9 +9,9 @@ Reduce risk of uneven display wear.
 ## Usage
 
 - Start your game in borderless fullscreen game, and run ambientlight.exe
+- Press ESC key to show/hide the settings window
 - To exit, close the ambientlight window from your taskbar
 - By default it captures an 16:9 box area of the desktop and renders in the area outside of this box
-- Edit the config.ini to apply different resolution and effects based on your display resolution and your game
 
 ## Screenshot
 
@@ -30,3 +30,4 @@ Reduce risk of uneven display wear.
 ## Credits
 [inipp](https://github.com/mcmtroffaes/inipp) <br />
 [DirectXTK](https://github.com/microsoft/DirectXTK) <br />
+[imgui](https://github.com/ocornut/imgui) <br />
