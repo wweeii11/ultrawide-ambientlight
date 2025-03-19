@@ -25,7 +25,7 @@ Reduce risk of uneven display wear.
 - BlurStrength: The number of blur passes that are applied
 - BlurDownscale: The size of downsacle for blur, higher value will give a more detailed effect
 - Mirror: Apply a horizontal mirroring to the effects, simulating a reflecting surface
-- UpdateInterval: Vsync interval of the effect rendering, range 1 to 4
+- FrameRate: rendering frame rate of the effects
 
 ## Credits
 [inipp](https://github.com/mcmtroffaes/inipp) <br />

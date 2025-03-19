@@ -167,11 +167,11 @@ Blur::~Blur()
 {
 }
 
-HRESULT Blur::Initialize(ComPtr<ID3D11Device> device, UINT width, UINT height)
+HRESULT Blur::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context, UINT width, UINT height)
 {
-	HRESULT hr = S_OK;
-	m_device = device;
-	m_device->GetImmediateContext(&m_context);
+    HRESULT hr = S_OK;
+    m_device = device;
+    m_context = context;
 
     ID3DBlob* errorBlob = nullptr;
 
