@@ -69,19 +69,19 @@ Copy::~Copy()
 {
 }
 
-HRESULT Copy::Initialize(ComPtr<ID3D11Device> device)
+HRESULT Copy::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context)
 {
     HRESULT hr = S_OK;
-	m_device = device;
-	m_device->GetImmediateContext(&m_context);
+    m_device = device;
+    m_context = context;
 
     ID3DBlob* errorBlob = nullptr;
 
-	// Compile and create vertex shader
-	ID3DBlob* vsBlob = nullptr;
+    // Compile and create vertex shader
+    ID3DBlob* vsBlob = nullptr;
     hr = D3DCompile(COPY_VS, strlen(COPY_VS), "VS", nullptr, nullptr, "VS", "vs_4_0", 0, 0, &vsBlob, &errorBlob);
-	RETURN_IF_FAILED(hr);
-	hr = m_device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &m_vertexShader);
+    RETURN_IF_FAILED(hr);
+    hr = m_device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &m_vertexShader);
     RETURN_IF_FAILED(hr);
 
     // Create input layout
@@ -95,7 +95,7 @@ HRESULT Copy::Initialize(ComPtr<ID3D11Device> device)
     hr = device->CreateInputLayout(layout, numElements, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_vertexLayout);
     vsBlob->Release();
     RETURN_IF_FAILED(hr);
-    
+
 
     // Compile and create pixel shader
     ID3DBlob* psBlob = nullptr;
@@ -149,8 +149,8 @@ HRESULT Copy::Initialize(ComPtr<ID3D11Device> device)
     samplerDesc.MinLOD = 0;
     samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
     hr = device->CreateSamplerState(&samplerDesc, &m_samplerState);
-    
-	return hr;
+
+    return hr;
 }
 
 HRESULT Copy::Apply(TextureView target, TextureView source, Flip flip)
@@ -158,7 +158,7 @@ HRESULT Copy::Apply(TextureView target, TextureView source, Flip flip)
     HRESULT hr = S_OK;
 
     D3D11_TEXTURE2D_DESC target_desc = {};
-	target.GetTexture()->GetDesc(&target_desc);
+    target.GetTexture()->GetDesc(&target_desc);
 
     D3D11_VIEWPORT vp;
     vp.Width = (float)target_desc.Width;
@@ -169,7 +169,7 @@ HRESULT Copy::Apply(TextureView target, TextureView source, Flip flip)
     vp.TopLeftY = 0;
     m_context->RSSetViewports(1, &vp);
 
-	ID3D11RenderTargetView* rtv = target.GetRTV();
+    ID3D11RenderTargetView* rtv = target.GetRTV();
     const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
     m_context->ClearRenderTargetView(rtv, clearColor);
 
@@ -184,7 +184,7 @@ HRESULT Copy::Apply(TextureView target, TextureView source, Flip flip)
 
     m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 
-	m_context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
+    m_context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
 
     switch (flip)
     {
@@ -197,18 +197,18 @@ HRESULT Copy::Apply(TextureView target, TextureView source, Flip flip)
     default:
         m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
     }
-    
-	m_context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
+
+    m_context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
 
     ID3D11ShaderResourceView* srv = source.GetSRV();
     m_context->PSSetShaderResources(0, 1, &srv);
 
-	m_context->Draw(4, 0);
+    m_context->Draw(4, 0);
 
     rtv = nullptr;
     m_context->OMSetRenderTargets(1, &rtv, nullptr);
     srv = nullptr;
     m_context->PSSetShaderResources(0, 1, &srv);
 
-	return S_OK;
+    return S_OK;
 }

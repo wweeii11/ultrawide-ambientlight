@@ -7,15 +7,15 @@
 class PresentWindow
 {
 public:
-	PresentWindow();
-	~PresentWindow();
-	void Create(HINSTANCE hInstance, AmbientLight* render);
-	void Run();
-	
-	HWND GetHwnd() { return m_hwnd; }
+    PresentWindow();
+    ~PresentWindow();
+    void Create(HINSTANCE hInstance, AmbientLight* render);
+    void Run();
+
+    HWND GetHwnd() { return m_hwnd; }
 
 protected:
-	static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+    static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 private:
-	HWND m_hwnd;
+    HWND m_hwnd;
 };
