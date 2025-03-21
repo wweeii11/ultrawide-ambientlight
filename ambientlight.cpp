@@ -300,6 +300,10 @@ void AmbientLight::RenderEffects()
     }
     m_copy.Render(m_offscreen2, m_offscreen1, flip);
 
+    ID3D11RenderTargetView* rtv = m_offscreen3.GetRTV();
+    float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    m_deferred->ClearRenderTargetView(rtv, color);
+
     D3D11_BOX box0 = {};
     D3D11_BOX box1 = {};
     if (!m_topbottom)
