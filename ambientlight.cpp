@@ -359,7 +359,7 @@ void AmbientLight::RenderEffects()
             m_offscreen2.GetTexture(), 0,
             m_mirror ? &box1 : &box0);
 
-        m_dirtyRects[1] = { 0, (LONG)(m_effectHeight + m_gameHeight), 0, (LONG)(m_effectHeight * 2 + m_gameHeight) };
+        m_dirtyRects[1] = { 0, (LONG)(m_effectHeight + m_gameHeight), (LONG)m_effectWidth, (LONG)(m_effectHeight * 2 + m_gameHeight)};
         m_deferred->CopySubresourceRegion(
             m_offscreen3.GetTexture(), 0,
             0, m_effectHeight + m_gameHeight, 0,
@@ -447,7 +447,7 @@ void AmbientLight::RenderConfig()
 
             if (ImGui::InputInt("Samples", (int*)&m_settings.blurSamples, 2, 2, ImGuiInputTextFlags_CharsDecimal))
             {
-                m_settings.blurSamples = max(min(m_settings.blurSamples / 2 * 2 + 1, 64), 1);
+                m_settings.blurSamples = max(min(m_settings.blurSamples / 2 * 2 + 1, 63), 1);
                 SaveSettings(m_settings);
             }
         }
