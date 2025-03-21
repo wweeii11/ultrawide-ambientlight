@@ -447,7 +447,7 @@ void AmbientLight::RenderConfig()
 
             if (ImGui::InputInt("Samples", (int*)&m_settings.blurSamples, 2, 2, ImGuiInputTextFlags_CharsDecimal))
             {
-                m_settings.blurSamples = max(min(m_settings.blurSamples / 2 * 2 + 1, 64), 1);
+                m_settings.blurSamples = max(min(m_settings.blurSamples / 2 * 2 + 1, 63), 1);
                 SaveSettings(m_settings);
             }
         }
