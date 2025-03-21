@@ -13,20 +13,30 @@
 #pragma comment(lib, "Winmm.lib")
 
 AmbientLight::AmbientLight()
+    : m_gameWidth(0),
+    m_gameHeight(0),
+    m_windowWidth(0),
+    m_windowHeight(0),
+    m_effectWidth(0),
+    m_effectHeight(0),
+    m_effectZoom(0),
+    m_blurSize(0),
+    m_blurPasses(0),
+    m_blurSamples(5),
+    m_mirror(false),
+    m_frameRate(60),
+    m_hwnd(nullptr),
+    m_lastPresentTime(0),
+    m_perfFreq(0),
+    m_showConfig(false),
+    m_topbottom(false),
+    m_vignetteEnabled(0),
+    m_vignetteIntesity(0.0f),
+    m_vignetteRadius(0.0f),
+    m_vignetteSmoothness(0.0f)
 {
-    m_gameWidth = 0;
-    m_gameHeight = 0;
-    m_windowWidth = 0;
-    m_windowHeight = 0;
-    m_effectWidth = 0;
-    m_effectHeight = 0;
-    m_effectZoom = 0;
-    m_blurSize = 0;
-    m_blurPasses = 0;
-    m_mirror = false;
-    m_frameRate = 60;
-    m_hwnd = nullptr;
-    m_lastPresentTime = 0;
+    m_dirtyRects[0] = { 0, 0, 0, 0 };
+    m_dirtyRects[1] = { 0, 0, 0, 0 };
 }
 
 AmbientLight::~AmbientLight()
@@ -66,8 +76,14 @@ void AmbientLight::UpdateSettings()
     m_mirror = m_settings.mirrored;
     m_blurPasses = m_settings.blurPasses;
     m_blurSize = m_settings.blurDownscale;
+    m_blurSamples = m_settings.blurSamples;
     m_frameRate = m_settings.frameRate;
+    m_effectZoom = m_settings.zoom * 16;
     m_topbottom = false;
+    m_vignetteEnabled = m_settings.vignetteEnabled;
+    m_vignetteIntesity = m_settings.vignetteIntensity;
+    m_vignetteRadius = m_settings.vignetteRadius;
+    m_vignetteSmoothness = m_settings.vignetteSmoothness;
 
     if (m_hwnd)
     {
@@ -114,10 +130,10 @@ void AmbientLight::UpdateSettings()
             m_effectHeight = m_windowHeight;
         }
 
-        m_effectZoom = 16;
+        m_blurPre.Initialize(m_device, m_deferred, m_gameWidth, m_gameHeight, m_blurSamples);
+        m_blurDownscale.Initialize(m_device, m_deferred, m_blurSize, m_blurSize, m_blurSamples);
 
-        m_blurPre.Initialize(m_device, m_deferred, m_gameWidth, m_gameHeight);
-        m_blurDownscale.Initialize(m_device, m_deferred, m_blurSize, m_blurSize);
+        m_vignette.Initialize(m_device, m_deferred, m_vignetteIntesity, m_vignetteRadius, m_vignetteSmoothness);
 
         CreateOffscreen(DXGI_FORMAT_B8G8R8A8_UNORM);
     }
@@ -165,7 +181,7 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
     scd.SampleDesc.Count = 1;
     scd.SampleDesc.Quality = 0;
     scd.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
-    scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
     scd.Scaling = DXGI_SCALING_STRETCH;
 
     hr = dxgiFactory2->CreateSwapChainForComposition(m_device.Get(), &scd, nullptr, &m_swapchain);
@@ -190,9 +206,9 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
     RETURN_IF_FAILED(hr);
 
     hr = m_capture.Initialize(m_device);
-    m_copy.Initialize(m_device, m_deferred.Get());
 
-    UpdateSettings();
+    m_fullscreenQuad.Initialize(m_device, m_deferred);
+    m_copy.Initialize(m_device, m_deferred.Get());
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -224,7 +240,9 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 
     m_offscreen1.RecreateTexture(m_device.Get(), format, down_width, down_height);
 
-    m_offscreen3.RecreateTexture(m_device.Get(), format, m_windowWidth + m_effectZoom * 2, m_windowHeight + m_effectZoom * 2);
+    m_offscreen2.RecreateTexture(m_device.Get(), format, m_windowWidth + m_effectZoom * 2, m_windowHeight + m_effectZoom * 2);
+
+    m_offscreen3.RecreateTexture(m_device.Get(), format, m_windowWidth, m_windowHeight);
     return hr;
 }
 
@@ -267,18 +285,83 @@ void AmbientLight::RenderEffects()
 
     m_deferred->CopySubresourceRegion(m_gameTexture.GetTexture(), 0, 0, 0, 0, desktopTexture.Get(), 0, &game_box);
 
-    m_blurPre.Apply(m_gameTexture, m_blurPasses);
+    m_fullscreenQuad.Render();
 
-    m_copy.Apply(m_offscreen1, m_gameTexture);
+    m_blurPre.Render(m_gameTexture, m_blurPasses);
 
-    m_blurDownscale.Apply(m_offscreen1, m_blurPasses);
+    m_copy.Render(m_offscreen1, m_gameTexture);
+
+    m_blurDownscale.Render(m_offscreen1, m_blurPasses);
 
     Copy::Flip flip = Copy::FlipNone;
     if (m_mirror)
     {
         flip = m_topbottom ? Copy::FlipVertical : Copy::FlipHorizontal;
     }
-    m_copy.Apply(m_offscreen3, m_offscreen1, flip);
+    m_copy.Render(m_offscreen2, m_offscreen1, flip);
+
+    D3D11_BOX box0 = {};
+    D3D11_BOX box1 = {};
+    if (!m_topbottom)
+    {
+        box0.left = m_effectZoom;
+        box0.right = box0.left + m_effectWidth;
+        box0.top = m_effectZoom;
+        box0.bottom = box0.top + m_effectHeight;
+        box0.front = 0;
+        box0.back = 1;
+
+        box1.left = box0.right + m_gameWidth;
+        box1.right = box1.left + m_effectWidth;
+        box1.top = m_effectZoom;
+        box1.bottom = box1.top + m_effectHeight;
+        box1.front = 0;
+        box1.back = 1;
+
+        m_dirtyRects[0] = { 0, 0, (LONG)m_effectWidth, (LONG)m_effectHeight };
+        m_deferred->CopySubresourceRegion(
+            m_offscreen3.GetTexture(), 0,
+            0, 0, 0,
+            m_offscreen2.GetTexture(), 0,
+            m_mirror ? &box1 : &box0);
+
+        m_dirtyRects[1] = { (LONG)(m_effectWidth + m_gameWidth), 0, (LONG)(m_effectWidth * 2 + m_gameWidth), (LONG)m_effectHeight };
+        m_deferred->CopySubresourceRegion(
+            m_offscreen3.GetTexture(), 0,
+            m_effectWidth + m_gameWidth, 0, 0,
+            m_offscreen2.GetTexture(), 0,
+            m_mirror ? &box0 : &box1);
+    }
+    else
+    {
+        box0.left = m_effectZoom;
+        box0.right = box0.left + m_effectWidth;
+        box0.top = m_effectZoom;
+        box0.bottom = box0.top + m_effectHeight;
+        box0.front = 0;
+        box0.back = 1;
+
+        box1.left = m_effectZoom;
+        box1.right = box1.left + m_effectWidth;
+        box1.top = box0.bottom + m_gameHeight;
+        box1.bottom = box1.top + m_effectHeight;
+        box1.front = 0;
+        box1.back = 1;
+
+        m_dirtyRects[0] = { 0, 0, (LONG)m_effectWidth, (LONG)m_effectHeight };
+        m_deferred->CopySubresourceRegion(
+            m_offscreen3.GetTexture(), 0,
+            0, 0, 0,
+            m_offscreen2.GetTexture(), 0,
+            m_mirror ? &box1 : &box0);
+
+        m_dirtyRects[1] = { 0, (LONG)(m_effectHeight + m_gameHeight), 0, (LONG)(m_effectHeight * 2 + m_gameHeight) };
+        m_deferred->CopySubresourceRegion(
+            m_offscreen3.GetTexture(), 0,
+            0, m_effectHeight + m_gameHeight, 0,
+            m_offscreen2.GetTexture(), 0,
+            m_mirror ? &box0 : &box1);
+    }
 }
 
 void AmbientLight::RenderConfig()
@@ -303,25 +386,6 @@ void AmbientLight::RenderConfig()
 
     ImGui::Text("Press Esc to show or hide this config window");
 
-    if (ImGui::InputInt("Blur Passes", (int*)&m_settings.blurPasses, 1, 1, ImGuiInputTextFlags_CharsDecimal))
-    {
-        m_settings.blurPasses = max(min(m_settings.blurPasses, 128), 0);
-        SaveSettings(m_settings);
-    }
-
-    if (ImGui::InputInt("Blur Downscale", (int*)&m_settings.blurDownscale, 16, 16, ImGuiInputTextFlags_CharsDecimal))
-    {
-        m_settings.blurDownscale = max(min(m_settings.blurDownscale, 1024), 16);
-        SaveSettings(m_settings);
-    }
-
-    if (ImGui::InputInt("Frame rate", (int*)&m_settings.frameRate, 1, 1000, ImGuiInputTextFlags_CharsDecimal))
-        m_settings.frameRate = max(min(m_settings.frameRate, 1000), 10);
-    SaveSettings(m_settings);
-
-    if (ImGui::Checkbox("Mirrored", &m_settings.mirrored))
-        SaveSettings(m_settings);
-
     if (ImGui::BeginCombo("Resolution", m_settings.resolutions.current.c_str(), 0))
     {
         for (auto& res : m_settings.resolutions.available)
@@ -337,7 +401,7 @@ void AmbientLight::RenderConfig()
     }
 
     bool updateResolution = false;
-    int res_input[2] = { m_settings.gameWidth, m_settings.gameHeight };
+    int res_input[2] = { (int)m_settings.gameWidth, (int)m_settings.gameHeight };
     if (ImGui::InputInt2("", res_input, ImGuiInputTextFlags_CharsDecimal))
         updateResolution = true;
 
@@ -360,6 +424,71 @@ void AmbientLight::RenderConfig()
         SaveSettings(m_settings);
     }
 
+
+    if (ImGui::CollapsingHeader("Effects"))
+    {
+        ImGui::SeparatorText("Blur");
+        {
+            if (ImGui::InputInt("Passes", (int*)&m_settings.blurPasses, 1, 1, ImGuiInputTextFlags_CharsDecimal))
+            {
+                m_settings.blurPasses = max(min(m_settings.blurPasses, 128), 0);
+                SaveSettings(m_settings);
+            }
+
+            if (ImGui::InputInt("Downscale", (int*)&m_settings.blurDownscale, 16, 16, ImGuiInputTextFlags_CharsDecimal))
+            {
+                m_settings.blurDownscale = max(min(m_settings.blurDownscale, 1024), 16);
+                SaveSettings(m_settings);
+            }
+
+            if (ImGui::InputInt("Samples", (int*)&m_settings.blurSamples, 2, 2, ImGuiInputTextFlags_CharsDecimal))
+            {
+                m_settings.blurSamples = max(min(m_settings.blurSamples / 2 * 2 + 1, 64), 1);
+                SaveSettings(m_settings);
+            }
+        }
+
+        ImGui::SeparatorText("Vignette");
+        {
+            if (ImGui::Checkbox("Enabled", &m_settings.vignetteEnabled))
+                SaveSettings(m_settings);
+
+            if (ImGui::InputFloat("Intensity", (float*)&m_settings.vignetteIntensity, 0.01f, 0.1f, "%.2f", ImGuiInputTextFlags_CharsDecimal))
+            {
+                m_settings.vignetteIntensity = max(min(m_settings.vignetteIntensity, 1.0f), 0.0f);
+                SaveSettings(m_settings);
+            }
+
+            if (ImGui::InputFloat("Radius", (float*)&m_settings.vignetteRadius, 0.01f, 0.1f, "%.2f", ImGuiInputTextFlags_CharsDecimal))
+            {
+                m_settings.vignetteRadius = max(min(m_settings.vignetteRadius, 1.0f), 0.0f);
+                SaveSettings(m_settings);
+            }
+
+            if (ImGui::InputFloat("Smoothness", (float*)&m_settings.vignetteSmoothness, 0.01f, 0.1f, "%.2f", ImGuiInputTextFlags_CharsDecimal))
+            {
+                m_settings.vignetteSmoothness = max(min(m_settings.vignetteSmoothness, 1.0f), 0.0f);
+                SaveSettings(m_settings);
+            }
+        }
+
+        ImGui::SeparatorText("Misc");
+        if (ImGui::InputInt("Frame rate", (int*)&m_settings.frameRate, 1, 5, ImGuiInputTextFlags_CharsDecimal))
+        {
+            m_settings.frameRate = max(min(m_settings.frameRate, 1000), 10);
+            SaveSettings(m_settings);
+        }
+
+        if (ImGui::InputInt("Zoom", (int*)&m_settings.zoom, 1, 1, ImGuiInputTextFlags_CharsDecimal))
+        {
+            m_settings.zoom = max(min(m_settings.zoom, 16), 0);
+            SaveSettings(m_settings);
+        }
+
+        if (ImGui::Checkbox("Mirrored", &m_settings.mirrored))
+            SaveSettings(m_settings);
+    }
+
     if (ImGui::Button("Exit"))
         PostQuitMessage(0);
 
@@ -374,73 +503,19 @@ void AmbientLight::RenderBackBuffer()
     ComPtr<ID3D11Texture2D> backBuffer;
     m_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), &backBuffer);
 
-    ComPtr<ID3D11RenderTargetView> rtv_back;
-    m_device->CreateRenderTargetView(backBuffer.Get(), nullptr, rtv_back.GetAddressOf());
-    m_deferred->OMSetRenderTargets(1, rtv_back.GetAddressOf(), nullptr);
+    TextureView backview;
+    backview.CreateViews(m_device.Get(), backBuffer.Get(), true, false);
+
+    ID3D11RenderTargetView *rtv_back = backview.GetRTV();
     float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-    m_deferred->ClearRenderTargetView(rtv_back.Get(), color);
+    m_deferred->ClearRenderTargetView(rtv_back, color);
 
-    if (!m_topbottom)
-    {
-        D3D11_BOX src_left = {};
-        src_left.left = m_effectZoom;
-        src_left.right = src_left.left + m_effectWidth;
-        src_left.top = m_effectZoom;
-        src_left.bottom = src_left.top + m_effectHeight;
-        src_left.front = 0;
-        src_left.back = 1;
-
-        D3D11_BOX src_right = {};
-        src_right.left = src_left.right + m_gameWidth;
-        src_right.right = src_right.left + m_effectWidth;
-        src_right.top = m_effectZoom;
-        src_right.bottom = src_right.top + m_effectHeight;
-        src_right.front = 0;
-        src_right.back = 1;
-
-        m_deferred->CopySubresourceRegion(
-            backBuffer.Get(), 0,
-            0, 0, 0,
-            m_offscreen3.GetTexture(), 0,
-            m_mirror ? &src_right : &src_left);
-
-        m_deferred->CopySubresourceRegion(
-            backBuffer.Get(), 0,
-            m_effectWidth + m_gameWidth, 0, 0,
-            m_offscreen3.GetTexture(), 0,
-            m_mirror ? &src_left : &src_right);
-    }
+    if (m_vignetteEnabled)
+        m_vignette.Render(backview, m_offscreen3);
     else
-    {
-        D3D11_BOX src_top = {};
-        src_top.left = m_effectZoom;
-        src_top.right = src_top.left + m_effectWidth;
-        src_top.top = m_effectZoom;
-        src_top.bottom = src_top.top + m_effectHeight;
-        src_top.front = 0;
-        src_top.back = 1;
+        m_deferred->CopyResource(backview.GetTexture(), m_offscreen3.GetTexture());
 
-        D3D11_BOX src_bottom = {};
-        src_bottom.left = m_effectZoom;
-        src_bottom.right = src_bottom.left + m_effectWidth;
-        src_bottom.top = src_top.bottom + m_gameHeight;
-        src_bottom.bottom = src_bottom.top + m_effectHeight;
-        src_bottom.front = 0;
-        src_bottom.back = 1;
-
-        m_deferred->CopySubresourceRegion(
-            backBuffer.Get(), 0,
-            0, 0, 0,
-            m_offscreen3.GetTexture(), 0,
-            m_mirror ? &src_bottom : &src_top);
-
-        m_deferred->CopySubresourceRegion(
-            backBuffer.Get(), 0,
-            0, m_effectHeight + m_gameHeight, 0,
-            m_offscreen3.GetTexture(), 0,
-            m_mirror ? &src_top : &src_bottom);
-    }
-
+    m_deferred->OMSetRenderTargets(1, &rtv_back, nullptr);
     if (m_showConfig)
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
@@ -480,7 +555,20 @@ void AmbientLight::Present()
         }
     }
 
-    m_swapchain->Present(1, 0);
+    if (m_showConfig)
+    {
+        m_swapchain->Present(1, 0);
+    }
+    else
+    {
+        DXGI_PRESENT_PARAMETERS param = {};
+        param.DirtyRectsCount = 2;
+        param.pDirtyRects = m_dirtyRects;
+        param.pScrollOffset = nullptr;
+        param.pScrollRect = nullptr;
+
+        m_swapchain->Present1(1, 0, &param);
+    }
 
     QueryPerformanceCounter((LARGE_INTEGER*)&now);
     m_lastPresentTime = now;
