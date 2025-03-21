@@ -1,10 +1,16 @@
 #include <vector>
 #include <string>
 
-#define DEFAULT_BLUR		3
-#define DEFAULT_DOWNSCALE	64
-#define DEFAULT_FRAMERATE	30
-#define DEFAULT_MIRRORED	false
+#define DEFAULT_BLUR_SAMPLES        5
+#define DEFAULT_BLUR_PASSES		    3
+#define DEFAULT_BLUR_DOWNSCALE	    64
+#define DEFAULT_ZOOM                1
+#define DEFAULT_FRAMERATE	        30
+#define DEFAULT_MIRRORED	        false
+#define DEFAULT_VIGNETTE_ENABLED    true
+#define DEFAULT_VIGNETTE_INTENSITY  1.0f
+#define DEFAULT_VIGNETTE_RADIUS     0.99f
+#define DEFAULT_VIGNETTE_SMOOTHNESS 0.4f
 
 struct ResolutionSettings
 {
@@ -27,8 +33,14 @@ struct AppSettings
     bool isAspectRatio = false;
     UINT blurDownscale = 0;
     UINT blurPasses = 0;
-    UINT frameRate = 30;
+    UINT blurSamples = 0;
+    UINT frameRate = 0;
     bool mirrored = false;
+    UINT zoom = 1;
+    bool vignetteEnabled = true;
+    float vignetteIntensity = 0.0f;
+    float vignetteRadius = 0.0f;
+    float vignetteSmoothness = 0.0f;
     Resolutions resolutions;
 };
 

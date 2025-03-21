@@ -24,22 +24,28 @@ public:
     {
 
     }
-    void CreateViews(ID3D11Device* device, ID3D11Texture2D* texture)
+    void CreateViews(ID3D11Device* device, ID3D11Texture2D* texture, bool createRtv = true, bool createSrv = true)
     {
         m_texture = texture;
 
         if (texture && device)
         {
-            D3D11_TEXTURE2D_DESC desc;
-            texture->GetDesc(&desc);
-            D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-            srvDesc.Format = desc.Format;
-            srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-            srvDesc.Texture2D.MipLevels = desc.MipLevels;
-            srvDesc.Texture2D.MostDetailedMip = 0;
-            device->CreateShaderResourceView(texture, &srvDesc, &m_srv);
+            if (createSrv)
+            {
+                D3D11_TEXTURE2D_DESC desc;
+                texture->GetDesc(&desc);
+                D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+                srvDesc.Format = desc.Format;
+                srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+                srvDesc.Texture2D.MipLevels = desc.MipLevels;
+                srvDesc.Texture2D.MostDetailedMip = 0;
+                device->CreateShaderResourceView(texture, &srvDesc, &m_srv);
+            }
 
-            device->CreateRenderTargetView(texture, nullptr, &m_rtv);
+            if (createRtv)
+            {
+                device->CreateRenderTargetView(texture, nullptr, &m_rtv);
+            }
         }
     }
     void Clear()

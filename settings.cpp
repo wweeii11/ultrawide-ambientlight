@@ -76,11 +76,14 @@ bool ReadSettings(AppSettings& settings)
     ini.parse(is);
     ini.strip_trailing_comments();
 
-    int blur = DEFAULT_BLUR;
+    int blur = DEFAULT_BLUR_PASSES;
     inipp::get_value(ini.sections["Game"], "BlurStrength", blur);
 
-    int blurSize = DEFAULT_DOWNSCALE;
+    int blurSize = DEFAULT_BLUR_DOWNSCALE;
     inipp::get_value(ini.sections["Game"], "BlurDownscale", blurSize);
+
+    int blurSamples = DEFAULT_BLUR_SAMPLES;
+    inipp::get_value(ini.sections["Game"], "BlurSamples", blurSamples);
 
     int frameRate = DEFAULT_FRAMERATE;
     inipp::get_value(ini.sections["Game"], "FrameRate", frameRate);
@@ -88,10 +91,31 @@ bool ReadSettings(AppSettings& settings)
     bool mirrored = DEFAULT_MIRRORED;
     inipp::get_value(ini.sections["Game"], "Mirrored", mirrored);
 
+    int zoom = DEFAULT_ZOOM;
+    inipp::get_value(ini.sections["Game"], "Zoom", zoom);
+
+    bool vignetteEnabled = DEFAULT_VIGNETTE_ENABLED;
+    inipp::get_value(ini.sections["Game"], "VignetteEnabled", vignetteEnabled);
+
+    float vignetteIntensity = DEFAULT_VIGNETTE_INTENSITY;
+    inipp::get_value(ini.sections["Game"], "VignetteIntensity", vignetteIntensity);
+
+    float vignetteRadius = DEFAULT_VIGNETTE_RADIUS;
+    inipp::get_value(ini.sections["Game"], "VignetteRadius", vignetteRadius);
+
+    float vignetteSmoothness = DEFAULT_VIGNETTE_SMOOTHNESS;
+    inipp::get_value(ini.sections["Game"], "VignetteSmoothness", vignetteSmoothness);
+
     settings.blurPasses = blur;
     settings.blurDownscale = blurSize;
+    settings.blurSamples = blurSamples;
     settings.frameRate = frameRate;
     settings.mirrored = mirrored;
+    settings.zoom = zoom;
+    settings.vignetteEnabled = vignetteEnabled;
+    settings.vignetteIntensity = vignetteIntensity;
+    settings.vignetteRadius = vignetteRadius;
+    settings.vignetteSmoothness = vignetteSmoothness;
 
 
     std::string currentRes = "";
@@ -170,8 +194,15 @@ void SaveSettings(AppSettings& settings)
     ini.sections["Game"]["Resolution"] = settings.resolutions.current;
     ini.sections["Game"]["BlurStrength"] = std::to_string(settings.blurPasses);
     ini.sections["Game"]["BlurDownscale"] = std::to_string(settings.blurDownscale);
+    ini.sections["Game"]["BlurSamples"] = std::to_string(settings.blurSamples);
     ini.sections["Game"]["FrameRate"] = std::to_string(settings.frameRate);
     ini.sections["Game"]["Mirrored"] = settings.mirrored ? "true" : "false";
+    ini.sections["Game"]["Zoom"] = std::to_string(settings.zoom);
+    ini.sections["Game"]["VignetteEnabled"] = settings.vignetteEnabled ? "true" : "false";
+    ini.sections["Game"]["VignetteIntensity"] = std::to_string(settings.vignetteIntensity);
+    ini.sections["Game"]["VignetteRadius"] = std::to_string(settings.vignetteRadius);
+    ini.sections["Game"]["VignetteSmoothness"] = std::to_string(settings.vignetteSmoothness);
+        
 
     for (auto& res : settings.resolutions.available)
     {

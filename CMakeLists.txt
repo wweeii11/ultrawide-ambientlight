@@ -19,6 +19,8 @@ set(SRC
 	settings.cpp
 	shaders/copy.cpp
 	shaders/blur.cpp
+	shaders/vignette.cpp
+	shaders/fullscreenquad.cpp
 	imgui/imgui.cpp
 	imgui/imgui_draw.cpp
 	imgui/imgui_tables.cpp
