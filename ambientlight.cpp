@@ -24,6 +24,7 @@ AmbientLight::AmbientLight()
     m_blurPasses(0),
     m_blurSamples(5),
     m_mirror(false),
+    m_stretched(false),
     m_frameRate(60),
     m_hwnd(nullptr),
     m_lastPresentTime(0),
@@ -74,6 +75,7 @@ void AmbientLight::UpdateSettings()
     bool isAspectRatio = m_settings.isAspectRatio;
 
     m_mirror = m_settings.mirrored;
+    m_stretched = m_settings.stretched;
     m_blurPasses = m_settings.blurPasses;
     m_blurSize = m_settings.blurDownscale;
     m_blurSamples = m_settings.blurSamples;
@@ -133,7 +135,7 @@ void AmbientLight::UpdateSettings()
         m_blurPre.Initialize(m_device, m_deferred, m_gameWidth, m_gameHeight, m_blurSamples);
         m_blurDownscale.Initialize(m_device, m_deferred, m_blurSize, m_blurSize, m_blurSamples);
 
-        m_vignette.Initialize(m_device, m_deferred, m_vignetteIntesity, m_vignetteRadius, m_vignetteSmoothness);
+        m_vignette.Initialize(m_device, m_deferred, m_vignetteIntesity, m_vignetteRadius, m_vignetteSmoothness, windowAspect);
 
         CreateOffscreen(DXGI_FORMAT_B8G8R8A8_UNORM);
     }
@@ -236,11 +238,13 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
     float aspect = (float)m_gameWidth / (float)m_gameHeight;
 
     UINT down_width = m_blurSize;
-    UINT down_height = m_blurSize;
+    UINT down_height = (UINT)((float)m_blurSize / aspect);
 
     m_offscreen1.RecreateTexture(m_device.Get(), format, down_width, down_height);
 
-    m_offscreen2.RecreateTexture(m_device.Get(), format, m_windowWidth + m_effectZoom * 2, m_windowHeight + m_effectZoom * 2);
+    UINT width2 = m_stretched ? m_windowWidth : m_gameWidth;
+    UINT height2 = m_stretched ? m_windowHeight : m_gameHeight;
+    m_offscreen2.RecreateTexture(m_device.Get(), format, width2 + m_effectZoom * 2, height2 + m_effectZoom * 2);
 
     m_offscreen3.RecreateTexture(m_device.Get(), format, m_windowWidth, m_windowHeight);
     return hr;
@@ -269,7 +273,7 @@ void AmbientLight::RenderEffects()
 
     ComPtr<IDXGISurface> surface;
     desktopTexture.As(&surface);
-    DXGI_SURFACE_DESC desc;
+    DXGI_SURFACE_DESC desc = {};
     surface->GetDesc(&desc);
 
     UINT crop_width = (desc.Width - m_gameWidth) / 2;
@@ -304,6 +308,9 @@ void AmbientLight::RenderEffects()
     float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     m_deferred->ClearRenderTargetView(rtv, color);
 
+    D3D11_TEXTURE2D_DESC desc2 = {};
+    m_offscreen2.GetTexture()->GetDesc(&desc2);
+
     D3D11_BOX box0 = {};
     D3D11_BOX box1 = {};
     if (!m_topbottom)
@@ -315,8 +322,8 @@ void AmbientLight::RenderEffects()
         box0.front = 0;
         box0.back = 1;
 
-        box1.left = box0.right + m_gameWidth;
-        box1.right = box1.left + m_effectWidth;
+        box1.left = desc2.Width - m_effectZoom - m_effectWidth;
+        box1.right = desc2.Width - m_effectZoom;
         box1.top = m_effectZoom;
         box1.bottom = box1.top + m_effectHeight;
         box1.front = 0;
@@ -347,8 +354,8 @@ void AmbientLight::RenderEffects()
 
         box1.left = m_effectZoom;
         box1.right = box1.left + m_effectWidth;
-        box1.top = box0.bottom + m_gameHeight;
-        box1.bottom = box1.top + m_effectHeight;
+        box1.top = desc2.Height - m_effectZoom - m_effectHeight;
+        box1.bottom = desc2.Height - m_effectZoom;
         box1.front = 0;
         box1.back = 1;
 
@@ -490,6 +497,9 @@ void AmbientLight::RenderConfig()
         }
 
         if (ImGui::Checkbox("Mirrored", &m_settings.mirrored))
+            SaveSettings(m_settings);
+
+        if (ImGui::Checkbox("Stretched", &m_settings.stretched))
             SaveSettings(m_settings);
     }
 

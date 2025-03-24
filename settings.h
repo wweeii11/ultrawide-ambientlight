@@ -7,6 +7,7 @@
 #define DEFAULT_ZOOM                1
 #define DEFAULT_FRAMERATE	        30
 #define DEFAULT_MIRRORED	        false
+#define DEFAULT_STRETCHED           true
 #define DEFAULT_VIGNETTE_ENABLED    true
 #define DEFAULT_VIGNETTE_INTENSITY  1.0f
 #define DEFAULT_VIGNETTE_RADIUS     0.99f
@@ -36,6 +37,7 @@ struct AppSettings
     UINT blurSamples = 0;
     UINT frameRate = 0;
     bool mirrored = false;
+    bool stretched = true;
     UINT zoom = 1;
     bool vignetteEnabled = true;
     float vignetteIntensity = 0.0f;

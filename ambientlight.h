@@ -56,6 +56,7 @@ private:
     float m_vignetteRadius;
     float m_vignetteSmoothness;
     bool m_mirror;
+    bool m_stretched;
 
     RECT m_dirtyRects[2];
 

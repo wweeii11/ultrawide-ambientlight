@@ -9,7 +9,7 @@ class Vignette
 public:
     Vignette();
     ~Vignette();
-    HRESULT Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context, float intensity, float radius, float smoothness);
+    HRESULT Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context, float intensity, float radius, float smoothness, float aspect);
     HRESULT Render(TextureView target, TextureView source);
 private:
     ComPtr<ID3D11Device> m_device;

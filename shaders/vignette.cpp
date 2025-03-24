@@ -15,6 +15,7 @@ cbuffer VignetteParams : register(b0)
     float intensity;     // Intensity of the vignette effect (0.0 - 1.0)
     float radius;        // Radius where the effect begins (0.0 - 1.0)
     float smoothness;    // Controls the smoothness of the transition (0.0 - 1.0)
+    float screenAspect;  // Aspect ratio of the screen
     float4 vignetteColor; // Color of the vignette (usually black)
 };
 
@@ -26,8 +27,14 @@ float4 main(float4 pos : SV_POSITION, float2 texCoord : TEXCOORD0) : SV_Target0
     // Sample the original texture
     float4 originalColor = inputTexture.Sample(samplerState, texCoord);
     
+    float2 adjustedCoords = texCoord;
+    if (screenAspect >= 1.0)
+        adjustedCoords.y = (adjustedCoords.y - center.y) / screenAspect + center.y;
+    else
+        adjustedCoords.x = (adjustedCoords.x - center.x) / screenAspect + center.x;
+
     // Calculate distance from center
-    float2 distFromCenter = texCoord - center;
+    float2 distFromCenter = adjustedCoords - center;
     float dist = length(distFromCenter);
     
     // Calculate vignette factor
@@ -53,6 +60,7 @@ struct VIGNETTE_PARAMETERS
     float intensity;
     float radius;
     float smoothness;
+    float screenAspect;
     XMFLOAT4 vignetteColor;
 };
 
@@ -64,7 +72,7 @@ Vignette::~Vignette()
 {
 }
 
-HRESULT Vignette::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context, float intensity, float radius, float smoothness)
+HRESULT Vignette::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context, float intensity, float radius, float smoothness, float aspect)
 {
     HRESULT hr = S_OK;
     m_device = device;
@@ -105,6 +113,7 @@ HRESULT Vignette::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCon
     paramData.intensity = intensity;
     paramData.radius = radius;
     paramData.smoothness = smoothness;
+    paramData.screenAspect = aspect;
     paramData.vignetteColor = { 0.0f, 0.0f, 0.0f, 0.0f };
     m_context->UpdateSubresource(m_params.Get(), 0, nullptr, &paramData, sizeof(VIGNETTE_PARAMETERS), 0);
 
