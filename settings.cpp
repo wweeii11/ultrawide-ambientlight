@@ -137,18 +137,16 @@ bool ReadSettings(AppSettings& settings)
 
         int res_width = 0;
         int res_height = 0;
-        bool res_aspect = false;
+
 
         inipp::get_value(ini.sections[name.c_str()], "Width", res_width);
         inipp::get_value(ini.sections[name.c_str()], "Height", res_height);
-        inipp::get_value(ini.sections[name.c_str()], "IsAspectRatio", res_aspect);
 
         //settings.resolutions
         ResolutionSettings rs = {};
         rs.name = name;
         rs.width = res_width;
         rs.height = res_height;
-        rs.isAspectRatio = res_aspect;
 
         settings.resolutions.available.push_back(rs);
 
@@ -156,7 +154,6 @@ bool ReadSettings(AppSettings& settings)
         {
             settings.gameWidth = res_width;
             settings.gameHeight = res_height;
-            settings.isAspectRatio = res_aspect;
         }
     }
 
@@ -167,20 +164,17 @@ bool ReadSettings(AppSettings& settings)
         rs.name = "16:9";
         rs.width = 16;
         rs.height = 9;
-        rs.isAspectRatio = true;
         settings.resolutions.available.push_back(rs);
         settings.resolutions.current = "16:9";
 
         rs.name = "4:3";
         rs.width = 4;
         rs.height = 3;
-        rs.isAspectRatio = true;
         settings.resolutions.available.push_back(rs);
 
         rs.name = "21:9";
         rs.width = 21;
         rs.height = 9;
-        rs.isAspectRatio = true;
         settings.resolutions.available.push_back(rs);
     }
 
@@ -213,7 +207,6 @@ void SaveSettings(AppSettings& settings)
     {
         ini.sections[res.name]["Width"] = std::to_string(res.width);
         ini.sections[res.name]["Height"] = std::to_string(res.height);
-        ini.sections[res.name]["IsAspectRatio"] = res.isAspectRatio ? "true" : "false";
     }
 
     is.close();

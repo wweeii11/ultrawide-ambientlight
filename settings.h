@@ -18,7 +18,6 @@ struct ResolutionSettings
     std::string name = "";
     UINT width = 0;
     UINT height = 0;
-    bool isAspectRatio = false;
 };
 
 struct Resolutions
@@ -31,7 +30,6 @@ struct AppSettings
 {
     UINT gameWidth = 0;
     UINT gameHeight = 0;
-    bool isAspectRatio = false;
     UINT blurDownscale = 0;
     UINT blurPasses = 0;
     UINT blurSamples = 0;
