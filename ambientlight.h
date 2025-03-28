@@ -14,8 +14,6 @@ public:
     AmbientLight();
     ~AmbientLight();
 
-    void UpdateSettings();
-
     HRESULT Initialize(HWND hwnd);
 
     void Render();
@@ -24,6 +22,8 @@ public:
 
 private:
     AppSettings m_settings;
+    void UpdateSettings();
+    void ValidateSettings();
 
     HWND m_hwnd;
     ComPtr<ID3D11Device> m_device;
@@ -56,6 +56,7 @@ private:
     float m_vignetteRadius;
     float m_vignetteSmoothness;
     bool m_mirror;
+    bool m_stretched;
 
     RECT m_dirtyRects[2];
 
@@ -80,6 +81,7 @@ private:
 
     void Present();
 
-    void ShowConfig(bool show);
-    bool m_showConfig;
+    void ShowConfigWindow(bool show);
+    bool m_showConfigWindow;
+    bool m_clearConfigWIndow;
 };

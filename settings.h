@@ -7,6 +7,7 @@
 #define DEFAULT_ZOOM                1
 #define DEFAULT_FRAMERATE	        30
 #define DEFAULT_MIRRORED	        false
+#define DEFAULT_STRETCHED           true
 #define DEFAULT_VIGNETTE_ENABLED    true
 #define DEFAULT_VIGNETTE_INTENSITY  1.0f
 #define DEFAULT_VIGNETTE_RADIUS     0.99f
@@ -17,7 +18,6 @@ struct ResolutionSettings
     std::string name = "";
     UINT width = 0;
     UINT height = 0;
-    bool isAspectRatio = false;
 };
 
 struct Resolutions
@@ -30,12 +30,12 @@ struct AppSettings
 {
     UINT gameWidth = 0;
     UINT gameHeight = 0;
-    bool isAspectRatio = false;
     UINT blurDownscale = 0;
     UINT blurPasses = 0;
     UINT blurSamples = 0;
     UINT frameRate = 0;
     bool mirrored = false;
+    bool stretched = true;
     UINT zoom = 1;
     bool vignetteEnabled = true;
     float vignetteIntensity = 0.0f;

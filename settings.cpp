@@ -91,6 +91,9 @@ bool ReadSettings(AppSettings& settings)
     bool mirrored = DEFAULT_MIRRORED;
     inipp::get_value(ini.sections["Game"], "Mirrored", mirrored);
 
+    bool stretched = DEFAULT_STRETCHED;
+    inipp::get_value(ini.sections["Game"], "Stretched", stretched);
+
     int zoom = DEFAULT_ZOOM;
     inipp::get_value(ini.sections["Game"], "Zoom", zoom);
 
@@ -111,6 +114,7 @@ bool ReadSettings(AppSettings& settings)
     settings.blurSamples = blurSamples;
     settings.frameRate = frameRate;
     settings.mirrored = mirrored;
+    settings.stretched = stretched;
     settings.zoom = zoom;
     settings.vignetteEnabled = vignetteEnabled;
     settings.vignetteIntensity = vignetteIntensity;
@@ -133,18 +137,16 @@ bool ReadSettings(AppSettings& settings)
 
         int res_width = 0;
         int res_height = 0;
-        bool res_aspect = false;
+
 
         inipp::get_value(ini.sections[name.c_str()], "Width", res_width);
         inipp::get_value(ini.sections[name.c_str()], "Height", res_height);
-        inipp::get_value(ini.sections[name.c_str()], "IsAspectRatio", res_aspect);
 
         //settings.resolutions
         ResolutionSettings rs = {};
         rs.name = name;
         rs.width = res_width;
         rs.height = res_height;
-        rs.isAspectRatio = res_aspect;
 
         settings.resolutions.available.push_back(rs);
 
@@ -152,7 +154,6 @@ bool ReadSettings(AppSettings& settings)
         {
             settings.gameWidth = res_width;
             settings.gameHeight = res_height;
-            settings.isAspectRatio = res_aspect;
         }
     }
 
@@ -163,20 +164,17 @@ bool ReadSettings(AppSettings& settings)
         rs.name = "16:9";
         rs.width = 16;
         rs.height = 9;
-        rs.isAspectRatio = true;
         settings.resolutions.available.push_back(rs);
         settings.resolutions.current = "16:9";
 
         rs.name = "4:3";
         rs.width = 4;
         rs.height = 3;
-        rs.isAspectRatio = true;
         settings.resolutions.available.push_back(rs);
 
         rs.name = "21:9";
         rs.width = 21;
         rs.height = 9;
-        rs.isAspectRatio = true;
         settings.resolutions.available.push_back(rs);
     }
 
@@ -197,6 +195,7 @@ void SaveSettings(AppSettings& settings)
     ini.sections["Game"]["BlurSamples"] = std::to_string(settings.blurSamples);
     ini.sections["Game"]["FrameRate"] = std::to_string(settings.frameRate);
     ini.sections["Game"]["Mirrored"] = settings.mirrored ? "true" : "false";
+    ini.sections["Game"]["Stretched"] = settings.stretched ? "true" : "false";
     ini.sections["Game"]["Zoom"] = std::to_string(settings.zoom);
     ini.sections["Game"]["VignetteEnabled"] = settings.vignetteEnabled ? "true" : "false";
     ini.sections["Game"]["VignetteIntensity"] = std::to_string(settings.vignetteIntensity);
@@ -208,7 +207,6 @@ void SaveSettings(AppSettings& settings)
     {
         ini.sections[res.name]["Width"] = std::to_string(res.width);
         ini.sections[res.name]["Height"] = std::to_string(res.height);
-        ini.sections[res.name]["IsAspectRatio"] = res.isAspectRatio ? "true" : "false";
     }
 
     is.close();
