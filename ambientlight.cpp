@@ -101,12 +101,12 @@ void AmbientLight::ValidateSettings()
 
     // use the width/height as aspect ratio, and calculate the game size base on the desktop size
     m_gameHeight = m_windowHeight;
-    m_gameWidth = m_gameHeight * width / height;
+    m_gameWidth = std::round((float)m_gameHeight * (float)width / (float)height);
 
     if (m_gameWidth > m_windowWidth)
     {
         m_gameWidth = m_windowWidth;
-        m_gameHeight = m_gameWidth * height / width;
+        m_gameHeight = std::round((float)m_gameWidth * (float)height / (float)width);
     }
 
     float gameAspect = (float)m_gameWidth / (float)m_gameHeight;
@@ -147,7 +147,6 @@ void AmbientLight::ValidateSettings()
     m_blurSamples = m_settings.blurSamples;
     m_frameRate = m_settings.frameRate;
     m_effectZoom = m_settings.zoom * 16;
-    m_topbottom = false;
     m_vignetteEnabled = m_settings.vignetteEnabled;
     m_vignetteIntesity = m_settings.vignetteIntensity;
     m_vignetteRadius = m_settings.vignetteRadius;
@@ -289,8 +288,8 @@ void AmbientLight::RenderEffects()
     DXGI_SURFACE_DESC desc = {};
     surface->GetDesc(&desc);
 
-    UINT crop_width = (desc.Width - m_gameWidth) / 2;
-    UINT crop_height = (desc.Height - m_gameHeight) / 2;
+    UINT crop_width = (UINT)std::round((float)(desc.Width - m_gameWidth) / 2);
+    UINT crop_height = (UINT)std::round((float)(desc.Height - m_gameHeight) / 2);
 
     D3D11_BOX game_box = {};
     game_box.left = crop_width;

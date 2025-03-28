@@ -2,9 +2,9 @@
 
 ---
 
-This is a simple program for extending your game image into black bars (letterbox) when playing a game that doesn't support native ultrawide resolutions (e.g. game with fixed 16:9 aspect on a 21:9 display, or 21:9 game on a 32:9 display).
+This is a simple program for extending your game image into black bars (letterbox) when playing a game that doesn't support native ultrawide resolutions (e.g. game with fixed 16:9 aspect on a 21:9 display, or 21:9 game on a 32:9 display, or even ultrawide content on a regular 16:9 display).
 
-Reduce risk of uneven display wear.
+Reduce risk of uneven display wear or burn-in for OLED users.
 
 ## Usage
 
@@ -18,6 +18,7 @@ Reduce risk of uneven display wear.
 ![screenshot](images/screen1.png)
 ![screenshot](images/screen2.png)
 ![screenshot](images/screen3.png)
+![screenshot](images/screen4.png)
 
 ## Config.ini
 
