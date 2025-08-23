@@ -17,10 +17,12 @@ set(SRC
 	capture.cpp
 	present.cpp
 	settings.cpp
+	ui.cpp
 	shaders/copy.cpp
 	shaders/blur.cpp
 	shaders/vignette.cpp
 	shaders/fullscreenquad.cpp
+	shaders/detect.cpp
 	imgui/imgui.cpp
 	imgui/imgui_draw.cpp
 	imgui/imgui_tables.cpp

@@ -54,6 +54,7 @@ public:
         m_srv = nullptr;
         m_rtv = nullptr;
     }
+
     HRESULT RecreateTexture(ID3D11Device* device, DXGI_FORMAT format, UINT width, UINT height)
     {
         HRESULT hr = S_OK;
