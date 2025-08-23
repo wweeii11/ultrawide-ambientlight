@@ -50,8 +50,8 @@ struct AppSettings
     float vignetteSmoothness = 0.0f;
     Resolutions resolutions;
     bool useAutoDetection = false;
-	float autoDetectionBrightnessThreshold = DEFAULT_AUTO_DETECTION_BRIGHTNESS_THRESHOLD;
-	float autoDetectionBlackRatio = DEFAULT_AUTO_DETECTION_BLACK_RATIO;
+    float autoDetectionBrightnessThreshold = DEFAULT_AUTO_DETECTION_BRIGHTNESS_THRESHOLD;
+    float autoDetectionBlackRatio = DEFAULT_AUTO_DETECTION_BLACK_RATIO;
 };
 
 

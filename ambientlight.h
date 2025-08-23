@@ -60,8 +60,8 @@ private:
     bool m_mirror;
     bool m_stretched;
     bool m_useAutoDetect;
-	float m_autoDetectionBrightnessThreshold;
-	float m_autoDetectionBlackRatio;
+    float m_autoDetectionBrightnessThreshold;
+    float m_autoDetectionBlackRatio;
     UINT m_autoWidth = 0;
     UINT m_autoHeight = 0;
 

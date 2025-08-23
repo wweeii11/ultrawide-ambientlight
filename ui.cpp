@@ -6,7 +6,7 @@
 #include <algorithm>
 #include "windows.h"
 
-bool RenderUI(AppSettings &settings, UINT gameWidth, UINT gameHeight)
+bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
 {
     // Start the Dear ImGui frame
     ImGui_ImplDX11_NewFrame();
