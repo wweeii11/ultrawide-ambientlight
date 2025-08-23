@@ -10,7 +10,7 @@ PresentWindow::~PresentWindow()
 
 void PresentWindow::Create(HINSTANCE hInstance, AmbientLight* render)
 {
-	SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
+    SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
 
     // Create a window class
     WNDCLASSEX wc = { 0 };

@@ -2,7 +2,7 @@
 //
 
 #include "ambientlight.h"
-
+#include "ui.h"
 #include "imgui/imgui.h"
 #include "imgui/backends/imgui_impl_win32.h"
 #include "imgui/backends/imgui_impl_dx11.h"
@@ -12,6 +12,8 @@
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dcomp.lib")
 #pragma comment(lib, "Winmm.lib")
+
+#define IS_BOX_EMPTY(box) ((box).left >= (box).right || (box).top >= (box).bottom)
 
 AmbientLight::AmbientLight()
     : m_gameWidth(0),
@@ -83,6 +85,8 @@ void AmbientLight::UpdateSettings()
         m_vignette.Initialize(m_device, m_deferred, m_vignetteIntesity, m_vignetteRadius, m_vignetteSmoothness, windowAspect);
 
         CreateOffscreen(DXGI_FORMAT_B8G8R8A8_UNORM);
+
+        m_detection.Initialize(m_device, m_immediate, m_windowWidth, m_windowHeight, m_autoDetectionBrightnessThreshold, m_autoDetectionBlackRatio);
     }
 }
 
@@ -91,7 +95,14 @@ void AmbientLight::ValidateSettings()
     // Validate game width and height
     UINT width = m_settings.gameWidth;
     UINT height = m_settings.gameHeight;
-    
+
+    m_useAutoDetect = m_settings.useAutoDetection;
+    if (m_useAutoDetect)
+    {
+        width = m_autoWidth;
+        height = m_autoHeight;
+    }
+
     // if missing config, setting default game size to 16:9
     if (width == 0 || height == 0)
     {
@@ -101,12 +112,12 @@ void AmbientLight::ValidateSettings()
 
     // use the width/height as aspect ratio, and calculate the game size base on the desktop size
     m_gameHeight = m_windowHeight;
-    m_gameWidth = std::round((float)m_gameHeight * (float)width / (float)height);
+    m_gameWidth = (UINT)std::round((float)m_gameHeight * (float)width / (float)height);
 
     if (m_gameWidth > m_windowWidth)
     {
         m_gameWidth = m_windowWidth;
-        m_gameHeight = std::round((float)m_gameWidth * (float)height / (float)width);
+        m_gameHeight = (UINT)std::round((float)m_gameWidth * (float)height / (float)width);
     }
 
     float gameAspect = (float)m_gameWidth / (float)m_gameHeight;
@@ -151,6 +162,9 @@ void AmbientLight::ValidateSettings()
     m_vignetteIntesity = m_settings.vignetteIntensity;
     m_vignetteRadius = m_settings.vignetteRadius;
     m_vignetteSmoothness = m_settings.vignetteSmoothness;
+
+    m_autoDetectionBrightnessThreshold = m_settings.autoDetectionBrightnessThreshold;
+    m_autoDetectionBlackRatio = m_settings.autoDetectionBlackRatio;
 }
 
 HRESULT AmbientLight::Initialize(HWND hwnd)
@@ -239,6 +253,8 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 
     ShowConfigWindow(true);
 
+    UpdateSettings();
+
     return 0;
 }
 
@@ -264,10 +280,6 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 
 void AmbientLight::Render()
 {
-    bool changed = ReadSettings(m_settings);
-    if (changed)
-        UpdateSettings();
-
     m_capture.Capture();
     ComPtr<ID3D11Texture2D> desktopTexture = m_capture.GetDesktopTexture();
     if (desktopTexture)
@@ -276,7 +288,12 @@ void AmbientLight::Render()
         RenderConfig();
         RenderBackBuffer();
         Present();
+        Detect();
     }
+
+    bool changed = ReadSettings(m_settings);
+    if (changed)
+        UpdateSettings();
 }
 
 void AmbientLight::RenderEffects()
@@ -298,6 +315,9 @@ void AmbientLight::RenderEffects()
     game_box.bottom = desc.Height - crop_height;
     game_box.front = 0;
     game_box.back = 1;
+
+    if (IS_BOX_EMPTY(game_box))
+        return;
 
     m_deferred->CopySubresourceRegion(m_gameTexture.GetTexture(), 0, 0, 0, 0, desktopTexture.Get(), 0, &game_box);
 
@@ -341,6 +361,9 @@ void AmbientLight::RenderEffects()
         box1.front = 0;
         box1.back = 1;
 
+        if (IS_BOX_EMPTY(box0) || IS_BOX_EMPTY(box1))
+            return;
+
         m_dirtyRects[0] = { 0, 0, (LONG)m_effectWidth, (LONG)m_effectHeight };
         m_deferred->CopySubresourceRegion(
             m_offscreen3.GetTexture(), 0,
@@ -371,6 +394,9 @@ void AmbientLight::RenderEffects()
         box1.front = 0;
         box1.back = 1;
 
+        if (IS_BOX_EMPTY(box0) || IS_BOX_EMPTY(box1))
+            return;
+
         m_dirtyRects[0] = { 0, 0, (LONG)m_effectWidth, (LONG)m_effectHeight };
         m_deferred->CopySubresourceRegion(
             m_offscreen3.GetTexture(), 0,
@@ -378,7 +404,7 @@ void AmbientLight::RenderEffects()
             m_offscreen2.GetTexture(), 0,
             m_mirror ? &box1 : &box0);
 
-        m_dirtyRects[1] = { 0, (LONG)(m_effectHeight + m_gameHeight), (LONG)m_effectWidth, (LONG)(m_effectHeight * 2 + m_gameHeight)};
+        m_dirtyRects[1] = { 0, (LONG)(m_effectHeight + m_gameHeight), (LONG)m_effectWidth, (LONG)(m_effectHeight * 2 + m_gameHeight) };
         m_deferred->CopySubresourceRegion(
             m_offscreen3.GetTexture(), 0,
             0, m_effectHeight + m_gameHeight, 0,
@@ -392,140 +418,8 @@ void AmbientLight::RenderConfig()
     if (!m_showConfigWindow)
         return;
 
-    // Start the Dear ImGui frame
-    ImGui_ImplDX11_NewFrame();
-    ImGui_ImplWin32_NewFrame();
-    ImGui::NewFrame();
-
-    ImGuiIO& io = ImGui::GetIO();
-
-    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-    center.y /= 2;
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-
-    bool open = true;
-    if (ImGui::Begin("Ambient light", &open, 0))
-        ShowConfigWindow(open);
-
-    ImGui::Text("Press Esc to show or hide this config window");
-
-    
-    if (ImGui::CollapsingHeader("Game/Content Resolution", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        if (ImGui::BeginCombo("Presets", m_settings.resolutions.current.c_str(), 0))
-        {
-            for (auto& res : m_settings.resolutions.available)
-            {
-                bool selected = m_settings.resolutions.current == res.name;
-                if (ImGui::Selectable(res.name.c_str(), &selected))
-                {
-                    m_settings.resolutions.current = res.name;
-                    SaveSettings(m_settings);
-                }
-            }
-            ImGui::EndCombo();
-        }
-
-        bool updateResolution = false;
-        int res_input[2] = { (int)m_settings.gameWidth, (int)m_settings.gameHeight };
-        if (ImGui::InputInt2("", res_input, ImGuiInputTextFlags_CharsDecimal))
-            updateResolution = true;
-
-        if (updateResolution)
-        {
-            for (auto& res : m_settings.resolutions.available)
-            {
-                if (m_settings.resolutions.current == res.name)
-                {
-                    res.width = res_input[0];
-                    res.height = res_input[1];
-                    break;
-                }
-            }
-
-            SaveSettings(m_settings);
-        }
-    }
-
-
-    if (ImGui::CollapsingHeader("Effects", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        ImGui::SeparatorText("Blur");
-        {
-            if (ImGui::InputInt("Passes", (int*)&m_settings.blurPasses, 1, 1, ImGuiInputTextFlags_CharsDecimal))
-            {
-                m_settings.blurPasses = std::clamp(m_settings.blurPasses, 0u, 128u);
-                SaveSettings(m_settings);
-            }
-
-            if (ImGui::InputInt("Downscale", (int*)&m_settings.blurDownscale, 16, 16, ImGuiInputTextFlags_CharsDecimal))
-            {
-                m_settings.blurDownscale = std::clamp(m_settings.blurDownscale, 16u, 1024u);
-                SaveSettings(m_settings);
-            }
-
-            if (ImGui::InputInt("Samples", (int*)&m_settings.blurSamples, 2, 2, ImGuiInputTextFlags_CharsDecimal))
-            {
-                m_settings.blurSamples = std::clamp(m_settings.blurSamples / 2 * 2 + 1, 1u, 63u);
-                SaveSettings(m_settings);
-            }
-        }
-
-        ImGui::SeparatorText("Vignette");
-        {
-            if (ImGui::Checkbox("Enabled", &m_settings.vignetteEnabled))
-                SaveSettings(m_settings);
-
-            if (ImGui::InputFloat("Intensity", (float*)&m_settings.vignetteIntensity, 0.01f, 0.1f, "%.2f", ImGuiInputTextFlags_CharsDecimal))
-            {
-                m_settings.vignetteIntensity = std::clamp(m_settings.vignetteIntensity, 0.0f, 1.0f);
-                SaveSettings(m_settings);
-            }
-
-            if (ImGui::InputFloat("Radius", (float*)&m_settings.vignetteRadius, 0.01f, 0.1f, "%.2f", ImGuiInputTextFlags_CharsDecimal))
-            {
-                m_settings.vignetteRadius = std::clamp(m_settings.vignetteRadius, 0.0f, 1.0f);
-                SaveSettings(m_settings);
-            }
-
-            if (ImGui::InputFloat("Smoothness", (float*)&m_settings.vignetteSmoothness, 0.01f, 0.1f, "%.2f", ImGuiInputTextFlags_CharsDecimal))
-            {
-                m_settings.vignetteSmoothness = std::clamp(m_settings.vignetteSmoothness, 0.0f, 1.0f);
-                SaveSettings(m_settings);
-            }
-        }
-
-        ImGui::SeparatorText("Misc");
-        if (ImGui::InputInt("Frame rate", (int*)&m_settings.frameRate, 1, 5, ImGuiInputTextFlags_CharsDecimal))
-        {
-            m_settings.frameRate = std::clamp(m_settings.frameRate, 10u, 1000u);
-            SaveSettings(m_settings);
-        }
-
-        if (ImGui::InputInt("Zoom", (int*)&m_settings.zoom, 1, 1, ImGuiInputTextFlags_CharsDecimal))
-        {
-            m_settings.zoom = std::clamp(m_settings.zoom, 0u, 16u);
-            SaveSettings(m_settings);
-        }
-
-        if (ImGui::Checkbox("Mirrored", &m_settings.mirrored))
-            SaveSettings(m_settings);
-
-        if (ImGui::Checkbox("Stretched", &m_settings.stretched))
-            SaveSettings(m_settings);
-    }
-
-    
-    
-    if (ImGui::Button("Exit"))
-        PostQuitMessage(0);
-
-    ImGui::SameLine();
-    ImGui::Text("%.1f FPS (%.3f ms/frame)", io.Framerate, 1000.0f / io.Framerate);
-
-    ImGui::End();
-
-    ImGui::Render();
+    bool open = RenderUI(m_settings, m_gameWidth, m_gameHeight);
+    ShowConfigWindow(open);
 }
 
 void AmbientLight::RenderBackBuffer()
@@ -536,7 +430,7 @@ void AmbientLight::RenderBackBuffer()
     TextureView backview;
     backview.CreateViews(m_device.Get(), backBuffer.Get(), true, false);
 
-    ID3D11RenderTargetView *rtv_back = backview.GetRTV();
+    ID3D11RenderTargetView* rtv_back = backview.GetRTV();
     float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     m_deferred->ClearRenderTargetView(rtv_back, color);
 
@@ -603,6 +497,46 @@ void AmbientLight::Present()
 
     QueryPerformanceCounter((LARGE_INTEGER*)&now);
     m_lastPresentTime = now;
+}
+
+void AmbientLight::Detect()
+{
+    if (m_useAutoDetect)
+    {
+        static ULONGLONG lastDetection = 0;
+        ULONGLONG now = timeGetTime();
+        if (now - lastDetection > 500)
+        {
+            ComPtr<ID3D11Texture2D> desktopTexture = m_capture.GetDesktopTexture();
+            if (!desktopTexture)
+                return;
+
+            lastDetection = now;
+            TextureView desktopTextureView;
+            desktopTextureView.CreateViews(m_device.Get(), desktopTexture.Get(), false, true);
+            m_detection.Detect(desktopTextureView);
+
+            int detectedGameWidth = m_detection.GetWidth();
+            int detectedGameHeight = m_detection.GetHeight();
+
+            //char* dbg = (char*)malloc(256);
+            //sprintf_s(dbg, 256, "Detected game size: %d x %d\n", detectedGameWidth, detectedGameHeight);
+            //OutputDebugStringA(dbg);
+
+            bool updateSettings = false;
+            if (m_autoWidth != detectedGameWidth || m_autoHeight != detectedGameHeight)
+            {
+                m_autoWidth = detectedGameWidth;
+                m_autoHeight = detectedGameHeight;
+                updateSettings = true;
+            }
+
+            if (updateSettings)
+            {
+                UpdateSettings();
+            }
+        }
+    }
 }
 
 void AmbientLight::ShowConfigWindow(bool show)

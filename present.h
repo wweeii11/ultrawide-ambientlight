@@ -1,3 +1,5 @@
+#pragma once
+
 #define UNICODE
 
 #include "common.h"

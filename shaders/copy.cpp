@@ -87,6 +87,9 @@ HRESULT Copy::Render(TextureView target, TextureView source, Flip flip)
 {
     HRESULT hr = S_OK;
 
+    if (!target.GetTexture() || !source.GetTexture())
+		return E_FAIL;
+
     D3D11_TEXTURE2D_DESC target_desc = {};
     target.GetTexture()->GetDesc(&target_desc);
 

@@ -7,6 +7,7 @@
 #include "shaders/blur.h"
 #include "shaders/fullscreenquad.h"
 #include "shaders/vignette.h"
+#include "shaders/detect.h"
 
 class AmbientLight
 {
@@ -40,6 +41,7 @@ private:
     Blur m_blurPre;
     Copy m_copy;
     Vignette m_vignette;
+    Detection m_detection;
 
     UINT m_gameWidth;
     UINT m_gameHeight;
@@ -57,6 +59,11 @@ private:
     float m_vignetteSmoothness;
     bool m_mirror;
     bool m_stretched;
+    bool m_useAutoDetect;
+    float m_autoDetectionBrightnessThreshold;
+    float m_autoDetectionBlackRatio;
+    UINT m_autoWidth = 0;
+    UINT m_autoHeight = 0;
 
     RECT m_dirtyRects[2];
 
@@ -80,6 +87,8 @@ private:
     void RenderBackBuffer();
 
     void Present();
+
+    void Detect();
 
     void ShowConfigWindow(bool show);
     bool m_showConfigWindow;
