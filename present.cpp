@@ -1,4 +1,6 @@
 #include "present.h"
+#include "resources.h"
+#include "shellapi.h"
 
 PresentWindow::PresentWindow()
 {
@@ -20,8 +22,8 @@ void PresentWindow::Create(HINSTANCE hInstance, AmbientLight* render)
     wc.lpszClassName = L"ambientlight";
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.style = CS_HREDRAW | CS_VREDRAW;
+    wc.hIcon = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(IDB_APPICON), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE);
     RegisterClassEx(&wc);
-
 
     // use direct composition
     DWORD dwExStyle = WS_EX_NOREDIRECTIONBITMAP | WS_EX_LAYERED | WS_EX_TOPMOST;
@@ -49,6 +51,18 @@ void PresentWindow::Create(HINSTANCE hInstance, AmbientLight* render)
     SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
 
     m_hwnd = hwnd;
+
+    NOTIFYICONDATA nid;
+    memset(&nid, 0, sizeof(nid)); // Initialize to zeros
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = m_hwnd; // Handle to your application's main window
+    nid.uID = IDB_APPICON; // Unique ID for your icon (from resource file or a constant)
+    nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP; // Flags indicating what information is provided
+    nid.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDB_APPICON)); // Handle to your icon
+    wcscpy_s(nid.szTip, L"Ambientlight"); // Tooltip text
+    nid.uCallbackMessage = WM_USER_SHELLICON; // Your custom message ID
+
+    Shell_NotifyIcon(NIM_ADD, &nid);
 
     return;
 }

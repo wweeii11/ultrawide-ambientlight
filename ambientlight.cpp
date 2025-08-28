@@ -16,7 +16,8 @@
 #define IS_BOX_EMPTY(box) ((box).left >= (box).right || (box).top >= (box).bottom)
 
 AmbientLight::AmbientLight()
-    : m_gameWidth(0),
+    : m_effectRendered(false),
+    m_gameWidth(0),
     m_gameHeight(0),
     m_windowWidth(0),
     m_windowHeight(0),
@@ -38,7 +39,11 @@ AmbientLight::AmbientLight()
     m_vignetteEnabled(0),
     m_vignetteIntesity(0.0f),
     m_vignetteRadius(0.0f),
-    m_vignetteSmoothness(0.0f)
+    m_vignetteSmoothness(0.0f),
+    m_useAutoDetect(false),
+    m_autoDetectionTime(DEFAULT_AUTO_DETECTION_TIME),
+    m_autoDetectionBrightnessThreshold(DEFAULT_AUTO_DETECTION_BRIGHTNESS_THRESHOLD),
+    m_autoDetectionBlackRatio(DEFAULT_AUTO_DETECTION_BLACK_RATIO)
 {
     m_dirtyRects[0] = { 0, 0, 0, 0 };
     m_dirtyRects[1] = { 0, 0, 0, 0 };
@@ -67,6 +72,17 @@ LRESULT AmbientLight::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
             return 0;
         }
     }
+    break;
+    case WM_USER_SHELLICON:
+    {
+        if (lParam == WM_LBUTTONUP || lParam == WM_RBUTTONUP)
+        {
+            ShowConfigWindow(!m_showConfigWindow);
+            SetForegroundWindow(hwnd);
+            return 0;
+        }
+    }
+    break;
     }
 
     return ImGui_ImplWin32_WndProcHandler(hwnd, message, wParam, lParam);
@@ -165,6 +181,7 @@ void AmbientLight::ValidateSettings()
 
     m_autoDetectionBrightnessThreshold = m_settings.autoDetectionBrightnessThreshold;
     m_autoDetectionBlackRatio = m_settings.autoDetectionBlackRatio;
+    m_autoDetectionTime = m_settings.autoDetectionTime;
 }
 
 HRESULT AmbientLight::Initialize(HWND hwnd)
@@ -280,25 +297,31 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 
 void AmbientLight::Render()
 {
-    m_capture.Capture();
-    ComPtr<ID3D11Texture2D> desktopTexture = m_capture.GetDesktopTexture();
-    if (desktopTexture)
+    m_capture.ReleaseFrame();
+
+    if (!RenderEffects())
     {
-        RenderEffects();
-        RenderConfig();
-        RenderBackBuffer();
-        Present();
-        Detect();
+        ClearEffects();
     }
+    RenderConfig();
+    RenderBackBuffer();
+    Present();
+    Detect();
 
     bool changed = ReadSettings(m_settings);
     if (changed)
         UpdateSettings();
 }
 
-void AmbientLight::RenderEffects()
+bool AmbientLight::RenderEffects()
 {
+    if (m_gameWidth >= m_windowWidth && m_gameHeight >= m_windowHeight)
+        return false;
+
+    m_capture.Capture();
     ComPtr<ID3D11Texture2D> desktopTexture = m_capture.GetDesktopTexture();
+    if (!desktopTexture)
+        return false;
 
     ComPtr<IDXGISurface> surface;
     desktopTexture.As(&surface);
@@ -317,7 +340,9 @@ void AmbientLight::RenderEffects()
     game_box.back = 1;
 
     if (IS_BOX_EMPTY(game_box))
-        return;
+        return false;
+
+    m_effectRendered = true;
 
     m_deferred->CopySubresourceRegion(m_gameTexture.GetTexture(), 0, 0, 0, 0, desktopTexture.Get(), 0, &game_box);
 
@@ -362,7 +387,7 @@ void AmbientLight::RenderEffects()
         box1.back = 1;
 
         if (IS_BOX_EMPTY(box0) || IS_BOX_EMPTY(box1))
-            return;
+            return false;
 
         m_dirtyRects[0] = { 0, 0, (LONG)m_effectWidth, (LONG)m_effectHeight };
         m_deferred->CopySubresourceRegion(
@@ -395,7 +420,7 @@ void AmbientLight::RenderEffects()
         box1.back = 1;
 
         if (IS_BOX_EMPTY(box0) || IS_BOX_EMPTY(box1))
-            return;
+            return false;;
 
         m_dirtyRects[0] = { 0, 0, (LONG)m_effectWidth, (LONG)m_effectHeight };
         m_deferred->CopySubresourceRegion(
@@ -411,6 +436,21 @@ void AmbientLight::RenderEffects()
             m_offscreen2.GetTexture(), 0,
             m_mirror ? &box0 : &box1);
     }
+
+    return true;
+}
+
+void AmbientLight::ClearEffects()
+{
+    if (m_effectRendered)
+    {
+        ID3D11RenderTargetView* rtv = m_offscreen3.GetRTV();
+        float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        m_deferred->ClearRenderTargetView(rtv, color);
+        m_dirtyRects[0] = { 0, 0, (LONG)m_windowWidth, (LONG)m_windowHeight };
+        m_dirtyRects[1] = { 0, 0, (LONG)m_windowWidth, (LONG)m_windowHeight };
+    }
+    m_effectRendered = false;
 }
 
 void AmbientLight::RenderConfig()
@@ -418,12 +458,16 @@ void AmbientLight::RenderConfig()
     if (!m_showConfigWindow)
         return;
 
+    m_fullscreenQuad.Render();
+
     bool open = RenderUI(m_settings, m_gameWidth, m_gameHeight);
     ShowConfigWindow(open);
 }
 
 void AmbientLight::RenderBackBuffer()
 {
+    m_fullscreenQuad.Render();
+
     ComPtr<ID3D11Texture2D> backBuffer;
     m_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), &backBuffer);
 
@@ -505,8 +549,9 @@ void AmbientLight::Detect()
     {
         static ULONGLONG lastDetection = 0;
         ULONGLONG now = timeGetTime();
-        if (now - lastDetection > 500)
+        if (now - lastDetection > m_autoDetectionTime)
         {
+            m_capture.Capture();
             ComPtr<ID3D11Texture2D> desktopTexture = m_capture.GetDesktopTexture();
             if (!desktopTexture)
                 return;

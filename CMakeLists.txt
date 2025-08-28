@@ -1,7 +1,7 @@
 ﻿# CMakeList.txt : CMake project for ambientlight, include source and define
 # project specific logic here.
 #
-cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required (VERSION 3.10)
 
 # Enable Hot Reload for MSVC compilers if supported.
 if (POLICY CMP0141)
@@ -29,6 +29,7 @@ set(SRC
 	imgui/imgui_widgets.cpp
 	imgui/backends/imgui_impl_dx11.cpp
 	imgui/backends/imgui_impl_win32.cpp
+	resources.rc resources.h
 )
 
 # Add source to this project's executable.
@@ -39,4 +40,5 @@ if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET ambientlight PROPERTY CXX_STANDARD 20)
 endif()
 
-# TODO: Add tests and install targets if needed.
+install(TARGETS ambientlight DESTINATION bin)
+install(FILES config.ini DESTINATION bin)

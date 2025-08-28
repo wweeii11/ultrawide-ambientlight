@@ -43,6 +43,7 @@ private:
     Vignette m_vignette;
     Detection m_detection;
 
+    bool m_effectRendered;
     UINT m_gameWidth;
     UINT m_gameHeight;
     UINT m_windowWidth;
@@ -60,6 +61,7 @@ private:
     bool m_mirror;
     bool m_stretched;
     bool m_useAutoDetect;
+    int m_autoDetectionTime;
     float m_autoDetectionBrightnessThreshold;
     float m_autoDetectionBlackRatio;
     UINT m_autoWidth = 0;
@@ -82,9 +84,10 @@ private:
 
     HRESULT CreateOffscreen(DXGI_FORMAT format);
 
-    void RenderEffects();
+    bool RenderEffects();
     void RenderConfig();
     void RenderBackBuffer();
+    void ClearEffects();
 
     void Present();
 

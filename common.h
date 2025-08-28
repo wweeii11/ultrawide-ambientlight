@@ -12,6 +12,8 @@
 
 using namespace Microsoft::WRL;
 
+#define WM_USER_SHELLICON (WM_USER + 1)
+
 #define RETURN_IF_FAILED(hr) if (FAILED(hr)) return hr;
 
 #define RECT_WIDTH(r) (r.right - r.left)

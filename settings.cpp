@@ -112,6 +112,9 @@ bool ReadSettings(AppSettings& settings)
     bool useAuto = DEFAULT_AUTO_DETECTION;
     inipp::get_value(ini.sections["Game"], "AutoDetection", useAuto);
 
+    int autoDetectionTime = DEFAULT_AUTO_DETECTION_TIME;
+    inipp::get_value(ini.sections["Game"], "AutoDetectionTime", autoDetectionTime);
+
     float autoDetectionBrightnessThreshold = DEFAULT_AUTO_DETECTION_BRIGHTNESS_THRESHOLD;
     inipp::get_value(ini.sections["Game"], "AutoDetectionBrightnessThreshold", autoDetectionBrightnessThreshold);
 
@@ -131,6 +134,7 @@ bool ReadSettings(AppSettings& settings)
     settings.vignetteRadius = vignetteRadius;
     settings.vignetteSmoothness = vignetteSmoothness;
     settings.useAutoDetection = useAuto;
+    settings.autoDetectionTime = autoDetectionTime;
     settings.autoDetectionBrightnessThreshold = autoDetectionBrightnessThreshold;
     settings.autoDetectionBlackRatio = autoDetectionBlackRatio;
 
@@ -214,6 +218,9 @@ void SaveSettings(AppSettings& settings)
     ini.sections["Game"]["VignetteRadius"] = std::to_string(settings.vignetteRadius);
     ini.sections["Game"]["VignetteSmoothness"] = std::to_string(settings.vignetteSmoothness);
     ini.sections["Game"]["AutoDetection"] = settings.useAutoDetection ? "true" : "false";
+    ini.sections["Game"]["AutoDetectionTime"] = std::to_string(settings.autoDetectionTime);
+    ini.sections["Game"]["AutoDetectionBrightnessThreshold"] = std::to_string(settings.autoDetectionBrightnessThreshold);
+    ini.sections["Game"]["AutoDetectionBlackRatio"] = std::to_string(settings.autoDetectionBlackRatio);
 
 
     for (auto& res : settings.resolutions.available)

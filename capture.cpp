@@ -39,22 +39,29 @@ HRESULT DesktopCapture::Initialize(ComPtr<ID3D11Device> device)
 
 HRESULT DesktopCapture::Capture()
 {
+    if (!m_desktopTexture)
+    {
+        DXGI_OUTDUPL_FRAME_INFO frameInfo;
+        ComPtr<IDXGIResource> desktopResource;
+        HRESULT hr = m_duplication->AcquireNextFrame(500, &frameInfo, &desktopResource);
+        if (hr == DXGI_ERROR_WAIT_TIMEOUT)
+        {
+            return hr;
+        }
+        RETURN_IF_FAILED(hr);
+        hr = desktopResource.As(&m_desktopTexture);
+        RETURN_IF_FAILED(hr);
+    }
+
+    return S_OK;
+}
+
+HRESULT DesktopCapture::ReleaseFrame()
+{
     if (m_desktopTexture)
     {
         m_desktopTexture = nullptr;
-        m_duplication->ReleaseFrame();
+        return m_duplication->ReleaseFrame();
     }
-
-    DXGI_OUTDUPL_FRAME_INFO frameInfo;
-    ComPtr<IDXGIResource> desktopResource;
-    HRESULT hr = m_duplication->AcquireNextFrame(500, &frameInfo, &desktopResource);
-    if (hr == DXGI_ERROR_WAIT_TIMEOUT)
-    {
-        return hr;
-    }
-    RETURN_IF_FAILED(hr);
-    hr = desktopResource.As(&m_desktopTexture);
-    RETURN_IF_FAILED(hr);
-
-    return hr;
+    return S_OK;
 }
