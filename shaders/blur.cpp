@@ -188,6 +188,8 @@ HRESULT Blur::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext
     blurData.SetBlurEffectParameters(0, dy, samples, g_BloomPresets[g_Bloom]);
     m_context->UpdateSubresource(m_blurParamsHeight.Get(), 0, nullptr, &blurData, sizeof(VS_BLUR_PARAMETERS), 0);
 
+    m_tempTexture.Clear();
+
     return S_OK;
 }
 

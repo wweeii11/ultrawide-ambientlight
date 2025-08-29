@@ -44,6 +44,7 @@ private:
     Detection m_detection;
 
     bool m_effectRendered;
+    bool m_presented;
     UINT m_gameWidth;
     UINT m_gameHeight;
     UINT m_windowWidth;

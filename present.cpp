@@ -106,6 +106,12 @@ LRESULT CALLBACK PresentWindow::WndProc(HWND hwnd, UINT message, WPARAM wParam, 
     }
     return 0;
 
+    case WM_DISPLAYCHANGE:
+    {
+        pRender->Initialize(hwnd);
+    }
+    return 0;
+
     case WM_PAINT:
     {
         if (pRender)
