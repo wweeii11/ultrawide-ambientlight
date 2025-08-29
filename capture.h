@@ -10,6 +10,7 @@ public:
     ~DesktopCapture();
     HRESULT Initialize(ComPtr<ID3D11Device> device);
     HRESULT Capture();
+    HRESULT ReleaseFrame();
 
     ComPtr<ID3D11Texture2D> GetDesktopTexture() { return m_desktopTexture; }
 private:

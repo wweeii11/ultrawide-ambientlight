@@ -259,16 +259,6 @@ HRESULT Detection::Detect(TextureView target)
     int bar_height = min(m_topBarEnd, m_height - m_bottomBarStart) + 1;
     m_detectHeight = m_height - bar_height * 2;
 
-    // allow auto detection to go up to 3/4 of screen
-    if (m_detectWidth < m_width / 4 || m_detectWidth > m_width - 4)
-    {
-        m_detectWidth = m_width;
-    }
-    if (m_detectHeight < m_height / 4 || m_detectHeight > m_height - 4)
-    {
-        m_detectHeight = m_height;
-    }
-
     float detectedAspect = (float)m_detectWidth / (float)m_detectHeight;
     float windowAspect = (float)m_width / (float)m_height;
 
@@ -280,6 +270,23 @@ HRESULT Detection::Detect(TextureView target)
     else
     {
         m_detectWidth = m_width;
+    }
+
+    if (detectedAspect > 3.0f || detectedAspect < 1.0f)
+    {
+        // detected aspect is too extreme, ignore
+        m_detectWidth = m_width;
+        m_detectHeight = m_height;
+    }
+
+    // minimum size of the light effects
+    if (m_detectWidth > m_width - 16)
+    {
+        m_detectWidth = m_width;
+    }
+    if (m_detectHeight > m_height - 16)
+    {
+        m_detectHeight = m_height;
     }
 
     return hr;

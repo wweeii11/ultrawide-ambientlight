@@ -17,8 +17,10 @@
 #define DEFAULT_VIGNETTE_RADIUS     0.99f
 #define DEFAULT_VIGNETTE_SMOOTHNESS 0.4f
 #define DEFAULT_AUTO_DETECTION      false
+#define DEFAULT_AUTO_DETECTION_TIME 500
 #define DEFAULT_AUTO_DETECTION_BRIGHTNESS_THRESHOLD 0.03f
 #define DEFAULT_AUTO_DETECTION_BLACK_RATIO 0.60f
+
 
 struct ResolutionSettings
 {
@@ -52,6 +54,7 @@ struct AppSettings
     bool useAutoDetection = false;
     float autoDetectionBrightnessThreshold = DEFAULT_AUTO_DETECTION_BRIGHTNESS_THRESHOLD;
     float autoDetectionBlackRatio = DEFAULT_AUTO_DETECTION_BLACK_RATIO;
+    int autoDetectionTime = DEFAULT_AUTO_DETECTION_TIME;
 };
 
 
