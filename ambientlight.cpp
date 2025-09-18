@@ -3,9 +3,6 @@
 
 #include "ambientlight.h"
 #include "ui.h"
-#include "imgui/imgui.h"
-#include "imgui/backends/imgui_impl_win32.h"
-#include "imgui/backends/imgui_impl_dx11.h"
 
 #include <algorithm>
 
@@ -54,64 +51,24 @@ AmbientLight::~AmbientLight()
 {
 }
 
-// Forward declare message handler from imgui_impl_win32.cpp
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 
 LRESULT AmbientLight::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    if (ImGui::GetCurrentContext() == nullptr)
-        return 0;
-
     switch (message)
     {
-    case WM_KEYDOWN:
+    case WM_TOGGLE_CONFIG_WINDOW:
     {
-        int pressed = (int)wParam;
-        if (pressed == VK_ESCAPE)
-        {
-            ShowConfigWindow(!m_showConfigWindow);
-            return 0;
-        }
-    }
-    break;
-
-    case WM_USER_SHELLICON:
-    {
-        if (lParam == WM_LBUTTONUP || lParam == WM_RBUTTONUP)
-        {
-            ShowConfigWindow(!m_showConfigWindow);
+        bool toggle = (lParam != 0);
+        bool show = toggle ? !m_showConfigWindow : (wParam != 0);
+        ShowConfigWindow(show);
+        if (show)
             SetForegroundWindow(hwnd);
-            return 0;
-        }
+        return 0;
     }
-    break;
-
-    case WM_ACTIVATE:
-    {
-        // hide config window when lost focus
-        if (LOWORD(wParam) == WA_INACTIVE)
-        {
-            ShowConfigWindow(false);
-        }
-        else
-        {
-            ShowConfigWindow(true);
-        }
-    }
-    break;
-
-    case WM_LBUTTONDOWN:
-    {
-        if (!ImGui::GetIO().WantCaptureMouse)
-        {
-            ShowConfigWindow(false);
-        }
-    }
-    break;
-
     }
 
-    return ImGui_ImplWin32_WndProcHandler(hwnd, message, wParam, lParam);
+    return UiWndProc(hwnd, message, wParam, lParam);
 }
 
 void AmbientLight::UpdateSettings()
@@ -179,7 +136,7 @@ void AmbientLight::ValidateSettings()
 
     // Validate blur settings
     m_settings.blurPasses = std::clamp(m_settings.blurPasses, 0u, 128u);
-    m_settings.blurDownscale = std::clamp(m_settings.blurDownscale, 16u, 1024u);
+    m_settings.blurDownscale = std::clamp(m_settings.blurDownscale / 2 * 2, 16u, 1024u);
     m_settings.blurSamples = std::clamp(m_settings.blurSamples / 2 * 2 + 1, 1u, 63u);
 
     // Validate vignette settings
@@ -286,29 +243,7 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
     m_offscreen2.Clear();
     m_offscreen3.Clear();
 
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-
-    // Setup Dear ImGui style
-    ImGui::StyleColorsDark();
-
-    // Setup Platform/Renderer backends
-    static bool imGuiInitialized = false;
-    if (imGuiInitialized)
-    {
-        ImGui_ImplDX11_Shutdown();
-        ImGui_ImplWin32_Shutdown();
-    }
-
-    ImGui_ImplWin32_Init(hwnd);
-    ImGui_ImplDX11_Init(m_device.Get(), m_deferred.Get());
-
-    ShowConfigWindow(!imGuiInitialized);
-
-    imGuiInitialized = true;
+    InitUI(hwnd, m_device.Get(), m_deferred.Get());
 
     UpdateSettings();
 

@@ -12,7 +12,12 @@
 
 using namespace Microsoft::WRL;
 
+// shell icon message
 #define WM_USER_SHELLICON (WM_USER + 1)
+// win message to toggle UI
+// lparam: 0 - use wparam as show/hide, 1 - toggle
+// wparam: 0 - hide, 1 - show
+#define WM_TOGGLE_CONFIG_WINDOW (WM_USER + 2)
 
 #define RETURN_IF_FAILED(hr) if (FAILED(hr)) return hr;
 
