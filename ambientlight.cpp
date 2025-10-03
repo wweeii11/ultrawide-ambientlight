@@ -86,6 +86,8 @@ void AmbientLight::UpdateSettings()
         CreateOffscreen(DXGI_FORMAT_B8G8R8A8_UNORM);
 
         m_detection.Initialize(m_device, m_immediate, m_windowWidth, m_windowHeight, m_autoDetectionBrightnessThreshold, m_autoDetectionBlackRatio);
+
+        UpdateUI(m_hwnd, m_settings);
     }
 }
 

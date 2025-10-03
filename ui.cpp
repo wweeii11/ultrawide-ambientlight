@@ -131,7 +131,7 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
     bool open = true;
     ImGui::Begin("Ambient light", &open, 0);
 
-    ImGui::Text("Press Esc to toggle showing config window");
+    ImGui::Text("Press Esc or system tray icon to toggle showing config window");
 
     if (ImGui::CollapsingHeader("Game/Content Resolution", ImGuiTreeNodeFlags_DefaultOpen))
     {
@@ -247,13 +247,21 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
             SaveSettings(settings);
     }
 
+    if (ImGui::CollapsingHeader("UI", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        if (ImGui::Checkbox("Show in taskbar", &settings.showInTaskbar))
+        {
+            SaveSettings(settings);
+        }
+    }
 
+    ImGui::Separator();
 
     if (ImGui::Button("Exit"))
         PostQuitMessage(0);
 
     ImGui::SameLine();
-    ImGui::Text("%.1f FPS (%.3f ms/frame)", io.Framerate, 1000.0f / io.Framerate);
+    ImGui::TextDisabled("%.1f FPS (%.2f ms/frame)", io.Framerate, 1000.0f / io.Framerate);
 
     ImGui::End();
 
@@ -261,3 +269,22 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
 
     return open;
 }
+
+void UpdateUI(HWND hwnd, AppSettings& settings)
+{
+    if (settings.showInTaskbar)
+    {
+        LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+        exStyle |= WS_EX_APPWINDOW;
+        exStyle &= ~WS_EX_TOOLWINDOW;
+        SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
+    }
+    else
+    {
+        LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+        exStyle |= WS_EX_TOOLWINDOW;
+        exStyle &= ~WS_EX_APPWINDOW;
+        SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
+    }
+}
+

@@ -121,6 +121,9 @@ bool ReadSettings(AppSettings& settings)
     float autoDetectionBlackRatio = DEFAULT_AUTO_DETECTION_BLACK_RATIO;
     inipp::get_value(ini.sections["Game"], "AutoDetectionBlackRatio", autoDetectionBlackRatio);
 
+    bool showInTaskbar = DEFAULT_SHOW_IN_TASKBAR;
+    inipp::get_value(ini.sections["UI"], "ShowInTaskbar", showInTaskbar);
+
 
     settings.blurPasses = blur;
     settings.blurDownscale = blurSize;
@@ -137,6 +140,7 @@ bool ReadSettings(AppSettings& settings)
     settings.autoDetectionTime = autoDetectionTime;
     settings.autoDetectionBrightnessThreshold = autoDetectionBrightnessThreshold;
     settings.autoDetectionBlackRatio = autoDetectionBlackRatio;
+    settings.showInTaskbar = showInTaskbar;
 
     std::string currentRes = "";
     inipp::get_value(ini.sections["Game"], "Resolution", currentRes);
@@ -221,6 +225,7 @@ void SaveSettings(AppSettings& settings)
     ini.sections["Game"]["AutoDetectionTime"] = std::to_string(settings.autoDetectionTime);
     ini.sections["Game"]["AutoDetectionBrightnessThreshold"] = std::to_string(settings.autoDetectionBrightnessThreshold);
     ini.sections["Game"]["AutoDetectionBlackRatio"] = std::to_string(settings.autoDetectionBlackRatio);
+    ini.sections["UI"]["ShowInTaskbar"] = settings.showInTaskbar ? "true" : "false";
 
 
     for (auto& res : settings.resolutions.available)
