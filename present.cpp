@@ -2,12 +2,30 @@
 #include "resources.h"
 #include "shellapi.h"
 
+#define APP_WINDOW_CLASS_NAME L"ambientlightapp"
+
 PresentWindow::PresentWindow()
 {
 }
 
 PresentWindow::~PresentWindow()
 {
+}
+
+void PresentWindow::FindAndShow()
+{
+    EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL
+        {
+            wchar_t className[256];
+            GetClassName(hwnd, className, 256);
+            if (wcscmp(className, APP_WINDOW_CLASS_NAME) == 0)
+            {
+                ShowWindow(hwnd, SW_SHOWNORMAL);
+                SetForegroundWindow(hwnd);
+                return FALSE; // stop enumeration
+            }
+            return TRUE; // continue enumeration
+        }, NULL);
 }
 
 void PresentWindow::Create(HINSTANCE hInstance, AmbientLight* render)
@@ -19,7 +37,7 @@ void PresentWindow::Create(HINSTANCE hInstance, AmbientLight* render)
     wc.cbSize = sizeof(WNDCLASSEX);
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInstance;
-    wc.lpszClassName = L"ambientlight";
+    wc.lpszClassName = APP_WINDOW_CLASS_NAME;
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.style = CS_HREDRAW | CS_VREDRAW;
     wc.hIcon = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(IDB_APPICON), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE);
@@ -35,7 +53,7 @@ void PresentWindow::Create(HINSTANCE hInstance, AmbientLight* render)
     RECT desktopRect;
     GetWindowRect(GetDesktopWindow(), &desktopRect);
     HWND hwnd = CreateWindowEx(dwExStyle,
-        L"ambientlight",
+        APP_WINDOW_CLASS_NAME,
         L"ambientlight",
         dwStyle,
         0, 0, desktopRect.right, desktopRect.bottom,

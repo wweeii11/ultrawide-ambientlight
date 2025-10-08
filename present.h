@@ -16,6 +16,8 @@ public:
 
     HWND GetHwnd() { return m_hwnd; }
 
+    static void FindAndShow();
+
 protected:
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 private:
