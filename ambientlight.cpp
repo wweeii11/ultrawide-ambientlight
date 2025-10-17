@@ -98,15 +98,21 @@ void AmbientLight::ValidateSettings()
     UINT height = m_settings.gameHeight;
 
     m_useAutoDetect = m_settings.useAutoDetection;
-    if (m_useAutoDetect)
+
+    if (!m_settings.loaded)
+    {
+        // initial value
+        width = m_windowWidth;
+        height = m_windowHeight;
+    }
+    else if (m_useAutoDetect)
     {
         width = m_autoWidth;
         height = m_autoHeight;
     }
-
-    // if missing config, setting default game size to 16:9
-    if (width == 0 || height == 0)
+    else if (width == 0 || height == 0)
     {
+        // if missing config, setting default game size to 16:9
         width = 16;
         height = 9;
     }

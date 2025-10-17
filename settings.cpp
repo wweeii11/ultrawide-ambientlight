@@ -124,7 +124,7 @@ bool ReadSettings(AppSettings& settings)
     bool showInTaskbar = DEFAULT_SHOW_IN_TASKBAR;
     inipp::get_value(ini.sections["UI"], "ShowInTaskbar", showInTaskbar);
 
-
+    settings.loaded = true;
     settings.blurPasses = blur;
     settings.blurDownscale = blurSize;
     settings.blurSamples = blurSamples;

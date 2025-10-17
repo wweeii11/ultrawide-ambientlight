@@ -37,6 +37,7 @@ struct Resolutions
 
 struct AppSettings
 {
+    bool loaded = false;
     UINT gameWidth = 0;
     UINT gameHeight = 0;
     UINT blurDownscale = 0;

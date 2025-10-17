@@ -115,6 +115,12 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
     m_height = height;
     m_blackThreshold = blackThreshold;
     m_blackRatio = blackRatio;
+    m_topBarEnd = 0;
+    m_bottomBarStart = m_height;
+    m_leftBarEnd = 0;
+    m_rightBarStart = m_width;
+    m_detectWidth = m_width;
+    m_detectHeight = m_height;
     return hr;
 }
 
