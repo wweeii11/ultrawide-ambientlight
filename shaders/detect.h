@@ -23,15 +23,12 @@ private:
 
     ComPtr<ID3D11ComputeShader> m_computeShader;
 
-    ComPtr<ID3D11Buffer> m_rowBuf;
-    ComPtr<ID3D11Buffer> m_rowStaging;
-    ComPtr<ID3D11UnorderedAccessView> m_rowUAV;
-    ComPtr<ID3D11Buffer> m_colBuf;
-    ComPtr<ID3D11Buffer> m_colStaging;
-    ComPtr<ID3D11UnorderedAccessView> m_colUAV;
+    ComPtr<ID3D11Texture2D> m_luma;
+    ComPtr<ID3D11Texture2D> m_lumaStaging;
+    ComPtr<ID3D11UnorderedAccessView> m_lumaUAV;
 
-    ComPtr<ID3D11Buffer> m_detectCB;
-
+    float m_blackThreshold;
+    float m_blackRatio;
     int m_width, m_height;
     int m_topBarEnd, m_bottomBarStart;
     int m_leftBarEnd, m_rightBarStart;
