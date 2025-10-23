@@ -212,7 +212,7 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
     scd.Width = m_windowWidth;
     scd.Height = m_windowHeight;
     scd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_UNORDERED_ACCESS;
     scd.BufferCount = 2;
     scd.SampleDesc.Count = 1;
     scd.SampleDesc.Quality = 0;
@@ -243,7 +243,6 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 
     hr = m_capture.Initialize(m_device);
 
-    m_fullscreenQuad.Initialize(m_device, m_deferred);
     m_copy.Initialize(m_device, m_deferred.Get());
 
     m_gameTexture.Clear();
@@ -326,8 +325,6 @@ bool AmbientLight::RenderEffects()
         return false;
 
     m_deferred->CopySubresourceRegion(m_gameTexture.GetTexture(), 0, 0, 0, 0, desktopTexture.Get(), 0, &game_box);
-
-    m_fullscreenQuad.Render();
 
     m_blurPre.Render(m_gameTexture, m_blurPasses);
 
@@ -445,16 +442,12 @@ void AmbientLight::RenderConfig()
     if (!m_showConfigWindow)
         return;
 
-    m_fullscreenQuad.Render();
-
     bool open = RenderUI(m_settings, m_gameWidth, m_gameHeight);
     ShowConfigWindow(open);
 }
 
 void AmbientLight::RenderBackBuffer()
 {
-    m_fullscreenQuad.Render();
-
     ComPtr<ID3D11Texture2D> backBuffer;
     m_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), &backBuffer);
 
@@ -563,7 +556,7 @@ void AmbientLight::Detect()
 
             lastDetection = now;
             TextureView desktopTextureView;
-            desktopTextureView.CreateViews(m_device.Get(), desktopTexture.Get(), false, true);
+            desktopTextureView.CreateViews(m_device.Get(), desktopTexture.Get(), false, true, false);
             m_detection.Detect(desktopTextureView);
 
             int detectedGameWidth = m_detection.GetWidth();

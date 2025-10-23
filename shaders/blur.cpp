@@ -1,5 +1,6 @@
 #include "blur.h"
 #include "d3dcompiler.h"
+#include "blur_bin.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -7,36 +8,6 @@
 
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
-
-const char* BLUR_PS = R"(
-
-Texture2D<float4> Texture : register(t0);
-sampler TextureSampler : register(s0);
-
-#define MAX_SAMPLE_COUNT 63
-
-cbuffer VS_BLUR_PARAMETERS : register(b0)
-{
-    float SampleCount;
-    float2 SampleOffsets[MAX_SAMPLE_COUNT];
-    float SampleWeights[MAX_SAMPLE_COUNT];
-    
-}
-
-float4 main(float4 pos : SV_POSITION, float2 texCoord : TEXCOORD0) : SV_Target0
-{
-    float4 c = 0;
-
-    // Combine a number of weighted image filter taps.
-    for (int i = 0; i < SampleCount; i++)
-    {
-        c += Texture.Sample(TextureSampler, texCoord + SampleOffsets[i]) * SampleWeights[i];
-    }
-
-    return c;
-}
-
-)";
 
 struct VS_BLOOM_PARAMETERS
 {
@@ -57,7 +28,7 @@ struct VS_BLUR_PARAMETERS
     XMFLOAT4 sampleCount = { 5,0,0,0 };
     XMFLOAT4 sampleOffsets[MAX_SAMPLE_COUNT];
     XMFLOAT4 sampleWeights[MAX_SAMPLE_COUNT];
-    
+
     void SetBlurEffectParameters(float dx, float dy, size_t samples, const VS_BLOOM_PARAMETERS& params)
     {
         sampleCount.x = (float)max(min(samples, MAX_SAMPLE_COUNT), 1);
@@ -150,15 +121,7 @@ HRESULT Blur::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext
     m_device = device;
     m_context = context;
 
-    ID3DBlob* errorBlob = nullptr;
-
-    // Compile and create pixel shader
-    ID3DBlob* psBlob = nullptr;
-    hr = D3DCompile(BLUR_PS, strlen(BLUR_PS), "PS", nullptr, nullptr, "main", "ps_4_0", 0, 0, &psBlob, &errorBlob);
-    RETURN_IF_FAILED(hr);
-
-    hr = device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &m_pixelShader);
-    psBlob->Release();
+    hr = device->CreateComputeShader(g_blur, sizeof(g_blur), nullptr, &m_shader);
     RETURN_IF_FAILED(hr);
 
     D3D11_SAMPLER_DESC samplerDesc = {};
@@ -205,15 +168,6 @@ HRESULT Blur::Render(TextureView target, UINT passes)
 
     m_tempTexture.RecreateTexture(m_device.Get(), target_desc.Format, target_desc.Width, target_desc.Height);
 
-    D3D11_VIEWPORT vp;
-    vp.Width = (float)target_desc.Width;
-    vp.Height = (float)target_desc.Height;
-    vp.MinDepth = 0.0f;
-    vp.MaxDepth = 1.0f;
-    vp.TopLeftX = 0;
-    vp.TopLeftY = 0;
-    m_context->RSSetViewports(1, &vp);
-
     for (UINT i = 0; i < passes; i++)
     {
         DoBlurPass(m_tempTexture, target, BlurHorizontal);
@@ -232,29 +186,29 @@ HRESULT Blur::DoBlurPass(TextureView target, TextureView source, BlurDirection d
 
     // Update the constant buffer
     if (direction == BlurHorizontal)
-        m_context->PSSetConstantBuffers(0, 1, m_blurParamsWidth.GetAddressOf());
+        m_context->CSSetConstantBuffers(0, 1, m_blurParamsWidth.GetAddressOf());
     else
-        m_context->PSSetConstantBuffers(0, 1, m_blurParamsHeight.GetAddressOf());
+        m_context->CSSetConstantBuffers(0, 1, m_blurParamsHeight.GetAddressOf());
 
-    ID3D11RenderTargetView* rtv = target.GetRTV();
-    const float clearColor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
-    m_context->ClearRenderTargetView(rtv, clearColor);
+    m_context->CSSetShader(m_shader.Get(), nullptr, 0);
 
-    m_context->OMSetRenderTargets(1, &rtv, nullptr);
-
-    m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
-
-    m_context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
+    m_context->CSSetSamplers(0, 1, m_samplerState.GetAddressOf());
 
     ID3D11ShaderResourceView* srv = source.GetSRV();
-    m_context->PSSetShaderResources(0, 1, &srv);
+    m_context->CSSetShaderResources(0, 1, &srv);
 
-    m_context->Draw(4, 0);
+    ID3D11UnorderedAccessView* uav = target.GetUAV();
+    m_context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
 
-    rtv = nullptr;
-    m_context->OMSetRenderTargets(1, &rtv, nullptr);
+    m_context->Dispatch(
+        (target_desc.Width + 15) / 16,
+        (target_desc.Height + 15) / 16,
+        1);
+
+    uav = nullptr;
+    m_context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
     srv = nullptr;
-    m_context->PSSetShaderResources(0, 1, &srv);
+    m_context->CSSetShaderResources(0, 1, &srv);
 
     return S_OK;
 }

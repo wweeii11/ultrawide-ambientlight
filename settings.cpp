@@ -4,7 +4,7 @@
 
 #define CONFIG_FILE ".\\config.ini"
 
-#define UPDATE_INTERVAL 500
+#define UPDATE_INTERVAL 250
 
 ULONGLONG lastCheckTime = 0;
 FILETIME lastWriteTime = {};

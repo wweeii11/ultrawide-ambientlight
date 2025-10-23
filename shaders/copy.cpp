@@ -1,5 +1,6 @@
 #include "copy.h"
 #include "d3dcompiler.h"
+#include "copy_bin.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -7,29 +8,12 @@
 
 using namespace DirectX;
 
-const char* COPY_PS = R"(
-
-Texture2D txSource : register(t0);
-SamplerState samLinear : register(s0);
-
-float4 main(float4 Pos : SV_POSITION, float2 Tex : TEXCOORD0) : SV_Target
+__declspec(align(16))
+struct COPY_PARAMETERS
 {
-    // Apply bilinear sampling when reading from the source texture
-    return txSource.Sample(samLinear, Tex);
-}
-
-float4 main_hflip(float4 Pos : SV_POSITION, float2 Tex : TEXCOORD0) : SV_Target
-{
-    // Apply bilinear sampling when reading from the source texture
-    return txSource.Sample(samLinear, float2(1.0 - Tex.x, Tex.y));
-}
-
-float4 main_vflip(float4 Pos : SV_POSITION, float2 Tex : TEXCOORD0) : SV_Target
-{
-    // Apply bilinear sampling when reading from the source texture
-    return txSource.Sample(samLinear, float2(Tex.x, 1.0 - Tex.y));
-}
-)";
+    UINT flipMode = 0; // 0=normal, 1=HFlip, 2=VFlip
+    XMFLOAT2 padding = {}; // keep 16-byte alignment
+};
 
 Copy::Copy()
 {
@@ -45,29 +29,7 @@ HRESULT Copy::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext
     m_device = device;
     m_context = context;
 
-    ID3DBlob* errorBlob = nullptr;
-
-    // Compile and create pixel shader
-    ID3DBlob* psBlob = nullptr;
-    hr = D3DCompile(COPY_PS, strlen(COPY_PS), "PS", nullptr, nullptr, "main", "ps_4_0", 0, 0, &psBlob, &errorBlob);
-    RETURN_IF_FAILED(hr);
-
-    hr = device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &m_pixelShader);
-    psBlob->Release();
-    RETURN_IF_FAILED(hr);
-
-    hr = D3DCompile(COPY_PS, strlen(COPY_PS), "PS", nullptr, nullptr, "main_hflip", "ps_4_0", 0, 0, &psBlob, &errorBlob);
-    RETURN_IF_FAILED(hr);
-
-    hr = device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &m_pixelShader_hflip);
-    psBlob->Release();
-    RETURN_IF_FAILED(hr);
-
-    hr = D3DCompile(COPY_PS, strlen(COPY_PS), "PS", nullptr, nullptr, "main_vflip", "ps_4_0", 0, 0, &psBlob, &errorBlob);
-    RETURN_IF_FAILED(hr);
-
-    hr = device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &m_pixelShader_vflip);
-    psBlob->Release();
+    hr = device->CreateComputeShader(g_copy, sizeof(g_copy), nullptr, &m_shader);
     RETURN_IF_FAILED(hr);
 
     D3D11_SAMPLER_DESC samplerDesc = {};
@@ -79,6 +41,13 @@ HRESULT Copy::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext
     samplerDesc.MinLOD = 0;
     samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
     hr = device->CreateSamplerState(&samplerDesc, &m_samplerState);
+
+    // Create constant buffer
+    D3D11_BUFFER_DESC bufferDesc = {};
+    bufferDesc.Usage = D3D11_USAGE_DEFAULT;
+    bufferDesc.ByteWidth = sizeof(COPY_PARAMETERS);
+    bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    hr = device->CreateBuffer(&bufferDesc, nullptr, &m_params);
 
     return hr;
 }
@@ -93,44 +62,41 @@ HRESULT Copy::Render(TextureView target, TextureView source, Flip flip)
     D3D11_TEXTURE2D_DESC target_desc = {};
     target.GetTexture()->GetDesc(&target_desc);
 
-    D3D11_VIEWPORT vp;
-    vp.Width = (float)target_desc.Width;
-    vp.Height = (float)target_desc.Height;
-    vp.MinDepth = 0.0f;
-    vp.MaxDepth = 1.0f;
-    vp.TopLeftX = 0;
-    vp.TopLeftY = 0;
-    m_context->RSSetViewports(1, &vp);
+    m_context->CSSetShader(m_shader.Get(), nullptr, 0);
 
-    ID3D11RenderTargetView* rtv = target.GetRTV();
-    const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-    m_context->ClearRenderTargetView(rtv, clearColor);
+    ID3D11UnorderedAccessView* uav = target.GetUAV();
+    m_context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
 
-    m_context->OMSetRenderTargets(1, &rtv, nullptr);
+    COPY_PARAMETERS copyParams = {};
 
     switch (flip)
     {
     case FlipHorizontal:
-        m_context->PSSetShader(m_pixelShader_hflip.Get(), nullptr, 0);
+        copyParams.flipMode = 1;
         break;
     case FlipVertical:
-        m_context->PSSetShader(m_pixelShader_vflip.Get(), nullptr, 0);
+        copyParams.flipMode = 2;
         break;
     default:
-        m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
+        copyParams.flipMode = 0;
     }
+    m_context->UpdateSubresource(m_params.Get(), 0, nullptr, &copyParams, sizeof(COPY_PARAMETERS), 0);
+    m_context->CSSetConstantBuffers(0, 1, m_params.GetAddressOf());
 
-    m_context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
+    m_context->CSSetSamplers(0, 1, m_samplerState.GetAddressOf());
 
     ID3D11ShaderResourceView* srv = source.GetSRV();
-    m_context->PSSetShaderResources(0, 1, &srv);
+    m_context->CSSetShaderResources(0, 1, &srv);
 
-    m_context->Draw(4, 0);
+    m_context->Dispatch(
+        (target_desc.Width + 15) / 16,
+        (target_desc.Height + 15) / 16,
+        1);
 
-    rtv = nullptr;
-    m_context->OMSetRenderTargets(1, &rtv, nullptr);
+    uav = nullptr;
+    m_context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
     srv = nullptr;
-    m_context->PSSetShaderResources(0, 1, &srv);
+    m_context->CSSetShaderResources(0, 1, &srv);
 
     return S_OK;
 }

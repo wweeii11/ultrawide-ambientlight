@@ -36,7 +36,6 @@ private:
     ComPtr<IDCompositionVisual> m_dcompVisual;
 
     DesktopCapture m_capture;
-    FullScreenQuad m_fullscreenQuad;
     Blur m_blurDownscale;
     Blur m_blurPre;
     Copy m_copy;

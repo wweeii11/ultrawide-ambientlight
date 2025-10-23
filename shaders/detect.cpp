@@ -1,43 +1,12 @@
 #include "detect.h"
 #include "d3dcompiler.h"
+#include "luma_bin.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "dxgi.lib")
 
 using namespace DirectX;
-
-// shader to compute luma for each pixel and output to UAV
-const char* DETECT_CS = R"(
-// Rec.709 luma weights
-static const float3 LumaWeights = float3(0.2126, 0.7152, 0.0722);
-
-Texture2D<float4> InputTexture : register(t0);
-RWTexture2D<float> OutputTexture: register(u0);
-
-float3 SRGBToLinear(float3 srgb)
-{
-    // Fast sRGB → Linear approx (could replace with exact curve if needed)
-    return pow(srgb, 2.2);
-}
-
-// Thread group: each thread processes 1 row and 1 column
-[numthreads(16, 16, 1)]
-void main(uint3 id : SV_DispatchThreadID)
-{
-    uint width, height;
-    InputTexture.GetDimensions(width, height);
-
-    int2 coord = id.xy;
-    if (coord.x >= width || coord.y >= height)
-        return;
-
-    float4 color = InputTexture.Load(int3(coord, 0));
-    float luma = dot(color.rgb, LumaWeights);
-    OutputTexture[coord] = luma;
-}
-
-)";
 
 Detection::Detection()
 {
@@ -94,13 +63,8 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
 
     ID3DBlob* errorBlob = nullptr;
 
-    // Compile and create pixel shader
-    ID3DBlob* csBlob = nullptr;
-    hr = D3DCompile(DETECT_CS, strlen(DETECT_CS), "CS", nullptr, nullptr, "main", "cs_5_0", 0, 0, &csBlob, &errorBlob);
-    RETURN_IF_FAILED(hr);
-
-    hr = device->CreateComputeShader(csBlob->GetBufferPointer(), csBlob->GetBufferSize(), nullptr, &m_computeShader);
-    csBlob->Release();
+    // create compute shader
+    hr = device->CreateComputeShader(g_luma, sizeof(g_luma), nullptr, &m_computeShader);
     RETURN_IF_FAILED(hr);
 
     CreateLumaMaskWithUAVAndStaging(

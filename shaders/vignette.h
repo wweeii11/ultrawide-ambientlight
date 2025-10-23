@@ -15,7 +15,7 @@ private:
     ComPtr<ID3D11Device> m_device;
     ComPtr<ID3D11DeviceContext> m_context;
 
-    ComPtr<ID3D11PixelShader> m_pixelShader;
+    ComPtr<ID3D11ComputeShader> m_shader;
     ComPtr<ID3D11SamplerState> m_samplerState;
 
     ComPtr<ID3D11Buffer> m_params;
