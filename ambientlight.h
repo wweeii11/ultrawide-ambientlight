@@ -84,6 +84,7 @@ private:
 
     HRESULT CreateOffscreen(DXGI_FORMAT format);
 
+    bool ShouldRenderEffect();
     bool RenderEffects();
     void RenderConfig();
     void RenderBackBuffer();

@@ -281,10 +281,15 @@ void AmbientLight::Render()
 {
     m_capture.ReleaseFrame();
 
-    if (!RenderEffects())
+    if (ShouldRenderEffect())
+    {
+        RenderEffects();
+    }
+    else
     {
         ClearEffects();
     }
+
     RenderConfig();
     RenderBackBuffer();
     Present();
@@ -295,11 +300,13 @@ void AmbientLight::Render()
         UpdateSettings();
 }
 
+bool AmbientLight::ShouldRenderEffect()
+{
+    return m_gameWidth < m_windowWidth || m_gameHeight < m_windowHeight;
+}
+
 bool AmbientLight::RenderEffects()
 {
-    if (m_gameWidth >= m_windowWidth && m_gameHeight >= m_windowHeight)
-        return false;
-
     m_capture.Capture();
     ComPtr<ID3D11Texture2D> desktopTexture = m_capture.GetDesktopTexture();
     if (!desktopTexture)
