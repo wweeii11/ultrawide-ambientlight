@@ -118,29 +118,40 @@ Blur::~Blur()
 HRESULT Blur::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context, UINT width, UINT height, UINT samples)
 {
     HRESULT hr = S_OK;
+    if (m_device != device)
+    {
+        m_shader = nullptr;
+    }
+
     m_device = device;
     m_context = context;
 
-    hr = device->CreateComputeShader(g_blur, sizeof(g_blur), nullptr, &m_shader);
-    RETURN_IF_FAILED(hr);
+    if (!m_shader)
+    {
+        hr = device->CreateComputeShader(g_blur, sizeof(g_blur), nullptr, &m_shader);
+        RETURN_IF_FAILED(hr);
 
-    D3D11_SAMPLER_DESC samplerDesc = {};
-    samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-    samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_MIRROR;
-    samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_MIRROR;
-    samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_MIRROR;
-    samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
-    samplerDesc.MinLOD = 0;
-    samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
-    hr = device->CreateSamplerState(&samplerDesc, &m_samplerState);
+        D3D11_SAMPLER_DESC samplerDesc = {};
+        samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+        samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_MIRROR;
+        samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_MIRROR;
+        samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_MIRROR;
+        samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+        samplerDesc.MinLOD = 0;
+        samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
+        hr = device->CreateSamplerState(&samplerDesc, &m_samplerState);
 
-    // Create constant buffer
-    D3D11_BUFFER_DESC bufferDesc = {};
-    bufferDesc.Usage = D3D11_USAGE_DEFAULT;
-    bufferDesc.ByteWidth = sizeof(VS_BLUR_PARAMETERS);
-    bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    hr = device->CreateBuffer(&bufferDesc, nullptr, &m_blurParamsWidth);
-    hr = device->CreateBuffer(&bufferDesc, nullptr, &m_blurParamsHeight);
+        // Create constant buffer
+        D3D11_BUFFER_DESC bufferDesc = {};
+        bufferDesc.Usage = D3D11_USAGE_DEFAULT;
+        bufferDesc.ByteWidth = sizeof(VS_BLUR_PARAMETERS);
+        bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        hr = device->CreateBuffer(&bufferDesc, nullptr, &m_blurParamsWidth);
+        hr = device->CreateBuffer(&bufferDesc, nullptr, &m_blurParamsHeight);
+
+        // Create temporary texture
+        m_tempTexture.Clear();
+    }
 
     VS_BLUR_PARAMETERS blurData;
     float dx = 1.0f / (float)width;
@@ -151,12 +162,10 @@ HRESULT Blur::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext
     blurData.SetBlurEffectParameters(0, dy, samples, g_BloomPresets[g_Bloom]);
     m_context->UpdateSubresource(m_blurParamsHeight.Get(), 0, nullptr, &blurData, sizeof(VS_BLUR_PARAMETERS), 0);
 
-    m_tempTexture.Clear();
-
     return S_OK;
 }
 
-HRESULT Blur::Render(TextureView target, UINT passes)
+HRESULT Blur::Render(ID3D11DeviceContext* context, TextureView target, UINT passes)
 {
     HRESULT hr = S_OK;
 
@@ -170,14 +179,14 @@ HRESULT Blur::Render(TextureView target, UINT passes)
 
     for (UINT i = 0; i < passes; i++)
     {
-        DoBlurPass(m_tempTexture, target, BlurHorizontal);
-        DoBlurPass(target, m_tempTexture, BlurVertical);
+        DoBlurPass(context, m_tempTexture, target, BlurHorizontal);
+        DoBlurPass(context, target, m_tempTexture, BlurVertical);
     }
 
     return hr;
 }
 
-HRESULT Blur::DoBlurPass(TextureView target, TextureView source, BlurDirection direction)
+HRESULT Blur::DoBlurPass(ID3D11DeviceContext* context, TextureView target, TextureView source, BlurDirection direction)
 {
     HRESULT hr = S_OK;
 
@@ -186,29 +195,29 @@ HRESULT Blur::DoBlurPass(TextureView target, TextureView source, BlurDirection d
 
     // Update the constant buffer
     if (direction == BlurHorizontal)
-        m_context->CSSetConstantBuffers(0, 1, m_blurParamsWidth.GetAddressOf());
+        context->CSSetConstantBuffers(0, 1, m_blurParamsWidth.GetAddressOf());
     else
-        m_context->CSSetConstantBuffers(0, 1, m_blurParamsHeight.GetAddressOf());
+        context->CSSetConstantBuffers(0, 1, m_blurParamsHeight.GetAddressOf());
 
-    m_context->CSSetShader(m_shader.Get(), nullptr, 0);
+    context->CSSetShader(m_shader.Get(), nullptr, 0);
 
-    m_context->CSSetSamplers(0, 1, m_samplerState.GetAddressOf());
+    context->CSSetSamplers(0, 1, m_samplerState.GetAddressOf());
 
     ID3D11ShaderResourceView* srv = source.GetSRV();
-    m_context->CSSetShaderResources(0, 1, &srv);
+    context->CSSetShaderResources(0, 1, &srv);
 
     ID3D11UnorderedAccessView* uav = target.GetUAV();
-    m_context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
+    context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
 
-    m_context->Dispatch(
+    context->Dispatch(
         (target_desc.Width + 15) / 16,
         (target_desc.Height + 15) / 16,
         1);
 
     uav = nullptr;
-    m_context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
+    context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
     srv = nullptr;
-    m_context->CSSetShaderResources(0, 1, &srv);
+    context->CSSetShaderResources(0, 1, &srv);
 
     return S_OK;
 }

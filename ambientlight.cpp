@@ -12,6 +12,24 @@
 
 #define IS_BOX_EMPTY(box) ((box).left >= (box).right || (box).top >= (box).bottom)
 
+D3D11_BOX GetMirroredBox(D3D11_BOX box, UINT width, UINT height)
+{
+    D3D11_BOX mirrored = box;
+    if (RECT_HEIGHT(box) == height)
+    {
+        // left/right
+        mirrored.left = width - box.right;
+        mirrored.right = width - box.left;
+    }
+    else if (RECT_WIDTH(box) == width)
+    {
+        // top/bottom
+        mirrored.top = height - box.bottom;
+        mirrored.bottom = height - box.top;
+    }
+    return mirrored;
+}
+
 AmbientLight::AmbientLight()
     : m_effectRendered(false),
     m_presented(false),
@@ -19,29 +37,13 @@ AmbientLight::AmbientLight()
     m_gameHeight(0),
     m_windowWidth(0),
     m_windowHeight(0),
-    m_effectWidth(0),
-    m_effectHeight(0),
     m_effectZoom(0),
-    m_blurSize(0),
-    m_blurPasses(0),
-    m_blurSamples(5),
-    m_mirror(false),
-    m_stretched(false),
     m_frameRate(60),
     m_hwnd(nullptr),
     m_lastPresentTime(0),
     m_perfFreq(0),
     m_showConfigWindow(false),
-    m_clearConfigWIndow(false),
-    m_topbottom(false),
-    m_vignetteEnabled(0),
-    m_vignetteIntesity(0.0f),
-    m_vignetteRadius(0.0f),
-    m_vignetteSmoothness(0.0f),
-    m_useAutoDetect(false),
-    m_autoDetectionTime(DEFAULT_AUTO_DETECTION_TIME),
-    m_autoDetectionBrightnessThreshold(DEFAULT_AUTO_DETECTION_BRIGHTNESS_THRESHOLD),
-    m_autoDetectionBlackRatio(DEFAULT_AUTO_DETECTION_BLACK_RATIO)
+    m_clearConfigWindow(false)
 {
     m_dirtyRects[0] = { 0, 0, 0, 0 };
     m_dirtyRects[1] = { 0, 0, 0, 0 };
@@ -50,8 +52,6 @@ AmbientLight::AmbientLight()
 AmbientLight::~AmbientLight()
 {
 }
-
-
 
 LRESULT AmbientLight::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -77,15 +77,33 @@ void AmbientLight::UpdateSettings()
 
     if (m_hwnd)
     {
-        m_blurPre.Initialize(m_device, m_deferred, m_gameWidth, m_gameHeight, m_blurSamples);
-        m_blurDownscale.Initialize(m_device, m_deferred, m_blurSize, m_blurSize, m_blurSamples);
+        m_blurPre.Initialize(m_device,
+            m_deferred,
+            m_gameWidth,
+            m_gameHeight,
+            m_settings.blurSamples);
+        m_blurDownscale.Initialize(m_device,
+            m_deferred,
+            m_settings.blurDownscale,
+            m_settings.blurDownscale,
+            m_settings.blurSamples);
 
         float windowAspect = (float)m_windowWidth / (float)m_windowHeight;
-        m_vignette.Initialize(m_device, m_deferred, m_vignetteIntesity, m_vignetteRadius, m_vignetteSmoothness, windowAspect);
+        m_vignette.Initialize(m_device,
+            m_deferred,
+            m_settings.vignetteIntensity,
+            m_settings.vignetteRadius,
+            m_settings.vignetteSmoothness,
+            windowAspect);
 
         CreateOffscreen(DXGI_FORMAT_B8G8R8A8_UNORM);
 
-        m_detection.Initialize(m_device, m_immediate, m_windowWidth, m_windowHeight, m_autoDetectionBrightnessThreshold, m_autoDetectionBlackRatio);
+        m_detection.Initialize(m_device,
+            m_immediate,
+            m_windowWidth,
+            m_windowHeight, 
+            m_settings.autoDetectionBrightnessThreshold, 
+            m_settings.autoDetectionBlackRatio);
 
         UpdateUI(m_hwnd, m_settings);
     }
@@ -93,53 +111,42 @@ void AmbientLight::UpdateSettings()
 
 void AmbientLight::ValidateSettings()
 {
-    // Validate game width and height
-    UINT width = m_settings.gameWidth;
-    UINT height = m_settings.gameHeight;
+    if (m_settings.loaded && m_settings.useAutoDetection)
+    {
+        m_blackBars = m_detection.GetDetectedBoxes();
+    }
+    else 
+    {
+        // Validate game width and height
+        UINT width = m_settings.gameWidth;
+        UINT height = m_settings.gameHeight;
 
-    m_useAutoDetect = m_settings.useAutoDetection;
+        if (!m_settings.loaded)
+        {
+            // initial value
+            width = m_windowWidth;
+            height = m_windowHeight;
+        }
+        else if (width == 0 || height == 0)
+        {
+            // if missing config, setting default game size to 16:9
+            width = 16;
+            height = 9;
+        }
 
-    if (!m_settings.loaded)
-    {
-        // initial value
-        width = m_windowWidth;
-        height = m_windowHeight;
+        m_blackBars = m_detection.GetFixedBoxes(width, height);
     }
-    else if (m_useAutoDetect)
-    {
-        width = m_autoWidth;
-        height = m_autoHeight;
-    }
-    else if (width == 0 || height == 0)
-    {
-        // if missing config, setting default game size to 16:9
-        width = 16;
-        height = 9;
-    }
+
 
     // use the width/height as aspect ratio, and calculate the game size base on the desktop size
+    m_gameWidth = m_windowWidth;
     m_gameHeight = m_windowHeight;
-    m_gameWidth = (UINT)std::round((float)m_gameHeight * (float)width / (float)height);
-
-    if (m_gameWidth > m_windowWidth)
+    if (m_blackBars.size() == 2)
     {
-        m_gameWidth = m_windowWidth;
-        m_gameHeight = (UINT)std::round((float)m_gameWidth * (float)height / (float)width);
-    }
-
-    float gameAspect = (float)m_gameWidth / (float)m_gameHeight;
-    float windowAspect = (float)m_windowWidth / (float)m_windowHeight;
-    if (gameAspect > windowAspect)
-    {
-        m_topbottom = true;
-        m_effectWidth = m_windowWidth;
-        m_effectHeight = (m_windowHeight - m_gameHeight) / 2;
-    }
-    else
-    {
-        m_topbottom = false;
-        m_effectWidth = (m_windowWidth - m_gameWidth) / 2;
-        m_effectHeight = m_windowHeight;
+        if (m_windowWidth > RECT_WIDTH(m_blackBars[0]))
+            m_gameWidth = m_windowWidth - RECT_WIDTH(m_blackBars[0]) - RECT_WIDTH(m_blackBars[1]);
+        if (m_windowHeight > RECT_HEIGHT(m_blackBars[0]))
+            m_gameHeight = m_windowHeight - RECT_HEIGHT(m_blackBars[0]) - RECT_HEIGHT(m_blackBars[1]);
     }
 
     // Validate blur settings
@@ -157,22 +164,7 @@ void AmbientLight::ValidateSettings()
 
     // Validate zoom
     m_settings.zoom = std::clamp(m_settings.zoom, 0u, 16u);
-
-    m_mirror = m_settings.mirrored;
-    m_stretched = m_settings.stretched;
-    m_blurPasses = m_settings.blurPasses;
-    m_blurSize = m_settings.blurDownscale;
-    m_blurSamples = m_settings.blurSamples;
-    m_frameRate = m_settings.frameRate;
     m_effectZoom = m_settings.zoom * 16;
-    m_vignetteEnabled = m_settings.vignetteEnabled;
-    m_vignetteIntesity = m_settings.vignetteIntensity;
-    m_vignetteRadius = m_settings.vignetteRadius;
-    m_vignetteSmoothness = m_settings.vignetteSmoothness;
-
-    m_autoDetectionBrightnessThreshold = m_settings.autoDetectionBrightnessThreshold;
-    m_autoDetectionBlackRatio = m_settings.autoDetectionBlackRatio;
-    m_autoDetectionTime = m_settings.autoDetectionTime;
 }
 
 HRESULT AmbientLight::Initialize(HWND hwnd)
@@ -264,16 +256,20 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 
     float aspect = (float)m_gameWidth / (float)m_gameHeight;
 
-    UINT down_width = m_blurSize;
-    UINT down_height = (UINT)((float)m_blurSize / aspect);
+    UINT downscale = m_settings.blurDownscale;
+    m_offscreen1.RecreateTexture(m_device.Get(), format,
+        downscale,
+        downscale);
 
-    m_offscreen1.RecreateTexture(m_device.Get(), format, down_width, down_height);
+    UINT width2 = m_settings.stretched ? m_windowWidth : m_gameWidth;
+    UINT height2 = m_settings.stretched ? m_windowHeight : m_gameHeight;
+    m_offscreen2.RecreateTexture(m_device.Get(), format,
+        width2 + m_effectZoom * 2,
+        height2 + m_effectZoom * 2);
 
-    UINT width2 = m_stretched ? m_windowWidth : m_gameWidth;
-    UINT height2 = m_stretched ? m_windowHeight : m_gameHeight;
-    m_offscreen2.RecreateTexture(m_device.Get(), format, width2 + m_effectZoom * 2, height2 + m_effectZoom * 2);
-
-    m_offscreen3.RecreateTexture(m_device.Get(), format, m_windowWidth, m_windowHeight);
+    m_offscreen3.RecreateTexture(m_device.Get(), format,
+        m_windowWidth,
+        m_windowHeight);
     return hr;
 }
 
@@ -317,34 +313,50 @@ bool AmbientLight::RenderEffects()
     DXGI_SURFACE_DESC desc = {};
     surface->GetDesc(&desc);
 
-    UINT crop_width = (UINT)std::round((float)(desc.Width - m_gameWidth) / 2);
-    UINT crop_height = (UINT)std::round((float)(desc.Height - m_gameHeight) / 2);
+    if (m_blackBars.size() != 2)
+        return false;
 
     D3D11_BOX game_box = {};
-    game_box.left = crop_width;
-    game_box.top = crop_height;
-    game_box.right = desc.Width - crop_width;
-    game_box.bottom = desc.Height - crop_height;
     game_box.front = 0;
     game_box.back = 1;
+    if (m_gameHeight == m_windowHeight)
+    {
+        // black bars on left/right
+        game_box.left = RECT_WIDTH(m_blackBars[0]);
+        game_box.right = m_windowWidth - RECT_WIDTH(m_blackBars[1]);
+        game_box.top = 0;
+        game_box.bottom = m_windowHeight;
+    }
+    else if (m_gameWidth == m_windowWidth)
+    {
+        // black bars on top/bottom
+        game_box.left = 0;
+        game_box.right = m_windowWidth;
+        game_box.top = RECT_HEIGHT(m_blackBars[0]);
+        game_box.bottom = m_windowHeight - RECT_HEIGHT(m_blackBars[1]);
+    }
+    else
+    {
+        return false;
+    }
 
     if (IS_BOX_EMPTY(game_box))
         return false;
 
     m_deferred->CopySubresourceRegion(m_gameTexture.GetTexture(), 0, 0, 0, 0, desktopTexture.Get(), 0, &game_box);
 
-    m_blurPre.Render(m_gameTexture, m_blurPasses);
+    m_blurPre.Render(m_deferred.Get(), m_gameTexture, m_settings.blurPasses);
 
-    m_copy.Render(m_offscreen1, m_gameTexture);
+    m_copy.Render(m_deferred.Get(), m_offscreen1, m_gameTexture);
 
-    m_blurDownscale.Render(m_offscreen1, m_blurPasses);
+    m_blurDownscale.Render(m_deferred.Get(), m_offscreen1, m_settings.blurPasses);
 
     Copy::Flip flip = Copy::FlipNone;
-    if (m_mirror)
+    if (m_settings.mirrored)
     {
-        flip = m_topbottom ? Copy::FlipVertical : Copy::FlipHorizontal;
+        flip = (m_gameWidth == m_windowWidth) ? Copy::FlipVertical : Copy::FlipHorizontal;
     }
-    m_copy.Render(m_offscreen2, m_offscreen1, flip);
+    m_copy.Render(m_deferred.Get(), m_offscreen2, m_offscreen1, flip);
 
     ID3D11RenderTargetView* rtv = m_offscreen3.GetRTV();
     float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -353,73 +365,24 @@ bool AmbientLight::RenderEffects()
     D3D11_TEXTURE2D_DESC desc2 = {};
     m_offscreen2.GetTexture()->GetDesc(&desc2);
 
-    D3D11_BOX box0 = {};
-    D3D11_BOX box1 = {};
-    if (!m_topbottom)
+    
+    for (int i = 0; i < 2; i++)
     {
-        box0.left = m_effectZoom;
-        box0.right = box0.left + m_effectWidth;
-        box0.top = m_effectZoom;
-        box0.bottom = box0.top + m_effectHeight;
-        box0.front = 0;
-        box0.back = 1;
+        D3D11_BOX src = m_settings.mirrored ? GetMirroredBox(m_blackBars[i], m_windowWidth, m_windowHeight) : m_blackBars[i]; 
+        D3D11_BOX dst = m_blackBars[i];
 
-        box1.left = desc2.Width - m_effectZoom - m_effectWidth;
-        box1.right = desc2.Width - m_effectZoom;
-        box1.top = m_effectZoom;
-        box1.bottom = box1.top + m_effectHeight;
-        box1.front = 0;
-        box1.back = 1;
+        src.left += m_effectZoom;
+        src.right += m_effectZoom;
+        src.top += m_effectZoom;
+        src.bottom += m_effectZoom;
+        if (IS_BOX_EMPTY(src) || IS_BOX_EMPTY(dst))
+            continue;
 
-        if (IS_BOX_EMPTY(box0) || IS_BOX_EMPTY(box1))
-            return false;
-
-        m_dirtyRects[0] = { 0, 0, (LONG)m_effectWidth, (LONG)m_effectHeight };
         m_deferred->CopySubresourceRegion(
             m_offscreen3.GetTexture(), 0,
-            0, 0, 0,
+            dst.left, dst.top, 0,
             m_offscreen2.GetTexture(), 0,
-            m_mirror ? &box1 : &box0);
-
-        m_dirtyRects[1] = { (LONG)(m_effectWidth + m_gameWidth), 0, (LONG)(m_effectWidth * 2 + m_gameWidth), (LONG)m_effectHeight };
-        m_deferred->CopySubresourceRegion(
-            m_offscreen3.GetTexture(), 0,
-            m_effectWidth + m_gameWidth, 0, 0,
-            m_offscreen2.GetTexture(), 0,
-            m_mirror ? &box0 : &box1);
-    }
-    else
-    {
-        box0.left = m_effectZoom;
-        box0.right = box0.left + m_effectWidth;
-        box0.top = m_effectZoom;
-        box0.bottom = box0.top + m_effectHeight;
-        box0.front = 0;
-        box0.back = 1;
-
-        box1.left = m_effectZoom;
-        box1.right = box1.left + m_effectWidth;
-        box1.top = desc2.Height - m_effectZoom - m_effectHeight;
-        box1.bottom = desc2.Height - m_effectZoom;
-        box1.front = 0;
-        box1.back = 1;
-
-        if (IS_BOX_EMPTY(box0) || IS_BOX_EMPTY(box1))
-            return false;;
-
-        m_dirtyRects[0] = { 0, 0, (LONG)m_effectWidth, (LONG)m_effectHeight };
-        m_deferred->CopySubresourceRegion(
-            m_offscreen3.GetTexture(), 0,
-            0, 0, 0,
-            m_offscreen2.GetTexture(), 0,
-            m_mirror ? &box1 : &box0);
-
-        m_dirtyRects[1] = { 0, (LONG)(m_effectHeight + m_gameHeight), (LONG)m_effectWidth, (LONG)(m_effectHeight * 2 + m_gameHeight) };
-        m_deferred->CopySubresourceRegion(
-            m_offscreen3.GetTexture(), 0,
-            0, m_effectHeight + m_gameHeight, 0,
-            m_offscreen2.GetTexture(), 0,
-            m_mirror ? &box0 : &box1);
+            &src);
     }
 
     m_effectRendered = true;
@@ -439,9 +402,6 @@ void AmbientLight::ClearEffects()
         m_presented = false;
     }
     m_effectRendered = false;
-
-    m_dirtyRects[0] = { 0, 0, (LONG)m_windowWidth, (LONG)m_windowHeight };
-    m_dirtyRects[1] = { 0, 0, (LONG)m_windowWidth, (LONG)m_windowHeight };
 }
 
 void AmbientLight::RenderConfig()
@@ -465,10 +425,13 @@ void AmbientLight::RenderBackBuffer()
     float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     m_deferred->ClearRenderTargetView(rtv_back, color);
 
-    if (m_vignetteEnabled && m_effectRendered)
-        m_vignette.Render(backview, m_offscreen3);
-    else
-        m_deferred->CopyResource(backview.GetTexture(), m_offscreen3.GetTexture());
+    if (m_settings.vignetteEnabled && m_effectRendered)
+        m_vignette.Render(m_deferred.Get(), m_offscreen3);
+
+    if (m_settings.useAutoDetection && m_effectRendered)
+        m_detection.RenderMask(m_deferred.Get(), m_offscreen3);
+
+    m_deferred->CopyResource(backview.GetTexture(), m_offscreen3.GetTexture());
 
     m_deferred->OMSetRenderTargets(1, &rtv_back, nullptr);
     if (m_showConfigWindow)
@@ -510,9 +473,9 @@ void AmbientLight::Present()
         }
     }
 
-    if (m_showConfigWindow || m_clearConfigWIndow)
+    if (m_showConfigWindow || m_clearConfigWindow)
     {
-        m_clearConfigWIndow = false;
+        m_clearConfigWindow = false;
         m_swapchain->Present(1, 0);
         m_presented = true;
     }
@@ -520,8 +483,21 @@ void AmbientLight::Present()
     {
         if (!m_presented)
         {
+            memset(m_dirtyRects, 0, sizeof(m_dirtyRects));
+            int numRects = 0;
+            for (auto &box : m_blackBars)
+            {
+                if (IS_BOX_EMPTY(box))
+                    continue;
+                m_dirtyRects[numRects].left = box.left;
+                m_dirtyRects[numRects].top = box.top;
+                m_dirtyRects[numRects].right = box.right;
+                m_dirtyRects[numRects].bottom = box.bottom;
+                numRects++;
+            }
+            
             DXGI_PRESENT_PARAMETERS param = {};
-            param.DirtyRectsCount = 2;
+            param.DirtyRectsCount = numRects;
             param.pDirtyRects = m_dirtyRects;
             param.pScrollOffset = nullptr;
             param.pScrollRect = nullptr;
@@ -550,11 +526,11 @@ void AmbientLight::Present()
 
 void AmbientLight::Detect()
 {
-    if (m_useAutoDetect)
+    if (m_settings.useAutoDetection)
     {
         static ULONGLONG lastDetection = 0;
         ULONGLONG now = timeGetTime();
-        if (now - lastDetection > m_autoDetectionTime)
+        if (now - lastDetection > m_settings.autoDetectionTime)
         {
             m_capture.Capture();
             ComPtr<ID3D11Texture2D> desktopTexture = m_capture.GetDesktopTexture();
@@ -564,20 +540,27 @@ void AmbientLight::Detect()
             lastDetection = now;
             TextureView desktopTextureView;
             desktopTextureView.CreateViews(m_device.Get(), desktopTexture.Get(), false, true, false);
-            m_detection.Detect(desktopTextureView);
+            m_detection.Detect(m_immediate.Get(), desktopTextureView);
 
-            int detectedGameWidth = m_detection.GetWidth();
-            int detectedGameHeight = m_detection.GetHeight();
-
-            //char* dbg = (char*)malloc(256);
-            //sprintf_s(dbg, 256, "Detected game size: %d x %d\n", detectedGameWidth, detectedGameHeight);
-            //OutputDebugStringA(dbg);
+            std::vector<D3D11_BOX> detected = m_detection.GetDetectedBoxes();
 
             bool updateSettings = false;
-            if (m_autoWidth != detectedGameWidth || m_autoHeight != detectedGameHeight)
+            if (detected.size() == m_blackBars.size())
             {
-                m_autoWidth = detectedGameWidth;
-                m_autoHeight = detectedGameHeight;
+                for (int i = 0; i < detected.size(); i++)
+                {
+                    if (detected[i].left != m_blackBars[i].left ||
+                        detected[i].top != m_blackBars[i].top ||
+                        detected[i].right != m_blackBars[i].right ||
+                        detected[i].bottom != m_blackBars[i].bottom)
+                    {
+                        updateSettings = true;
+                        break;
+                    }
+                }
+            }
+            else
+            {
                 updateSettings = true;
             }
 
@@ -593,7 +576,7 @@ void AmbientLight::ShowConfigWindow(bool show)
 {
     if (show != m_showConfigWindow)
     {
-        m_clearConfigWIndow = true;
+        m_clearConfigWindow = true;
         m_showConfigWindow = show;
         DWORD dwExStyle = GetWindowLong(m_hwnd, GWL_EXSTYLE);
 

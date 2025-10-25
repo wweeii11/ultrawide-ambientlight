@@ -10,7 +10,7 @@ public:
 	~FullScreenQuad();
 
 	HRESULT Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context);
-	HRESULT Render();
+	HRESULT Render(ID3D11DeviceContext* context);
 
 private:
 	ComPtr<ID3D11Device> m_device;

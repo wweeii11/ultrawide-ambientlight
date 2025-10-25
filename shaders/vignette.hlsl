@@ -8,8 +8,7 @@ cbuffer VignetteParams : register(b0)
     float4 vignetteColor; // Color of the vignette (usually black)
 };
 
-Texture2D<float4> inputTexture : register(t0);
-RWTexture2D<float4> outputTexture : register(u0);
+RWTexture2D<unorm float4> outputTexture : register(u0);
 
 [numthreads(16, 16, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
@@ -24,7 +23,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     float2 texCoord = (float2(DTid.xy) + 0.5) / float2(width, height);
 
     // Sample the original texture
-    float4 originalColor = inputTexture.Load(int3(DTid.xy, 0));
+    float4 originalColor = outputTexture.Load(int3(DTid.xy, 0));
 
     // Adjust for aspect ratio
     float2 adjustedCoords = texCoord;

@@ -24,6 +24,7 @@ set(SHADERS
 	shaders/luma.hlsl
 	shaders/vignette.hlsl
 	shaders/copy.hlsl
+	shaders/mask.hlsl
 )
 
 foreach(SHADER_FILE ${SHADERS})
