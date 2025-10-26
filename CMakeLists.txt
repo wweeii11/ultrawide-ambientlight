@@ -11,6 +11,36 @@ endif()
 
 project ("ambientlight")
 
+# compile shaders
+find_program(FXC fxc DOC "fx shader compiler")
+if ("${FXC}" STREQUAL "FXC-NOTFOUND")
+    message(FATAL_ERROR "FX Shader compiler not found")
+else()
+	message(STATUS "Found FXC: ${FXC}")
+endif()
+
+set(SHADERS
+	shaders/blur.hlsl
+	shaders/luma.hlsl
+	shaders/vignette.hlsl
+	shaders/copy.hlsl
+	shaders/mask.hlsl
+)
+
+foreach(SHADER_FILE ${SHADERS})
+	get_filename_component(SHADER_NAME ${SHADER_FILE} NAME_WE)
+	set(SHADER_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/shaders/${SHADER_NAME}_bin.h")
+	add_custom_command(
+		OUTPUT ${SHADER_OUTPUT}
+		COMMAND fxc /T cs_5_0 /E main /Fh ${SHADER_OUTPUT} ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILE} /Vn g_${SHADER_NAME}
+		DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILE}
+		COMMENT "Compiling shader ${SHADER_FILE}"
+	)
+	list(APPEND GENERATED_SHADER_HEADERS ${SHADER_OUTPUT})
+endforeach()
+
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/shaders)
+
 set(SRC
 	app.cpp
 	ambientlight.cpp
@@ -33,7 +63,7 @@ set(SRC
 )
 
 # Add source to this project's executable.
-add_executable (ambientlight WIN32 ${SRC})
+add_executable (ambientlight WIN32 ${SRC} ${GENERATED_SHADER_HEADERS})
 target_include_directories(ambientlight PRIVATE "imgui")
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)

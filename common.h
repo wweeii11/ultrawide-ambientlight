@@ -12,7 +12,12 @@
 
 using namespace Microsoft::WRL;
 
+// shell icon message
 #define WM_USER_SHELLICON (WM_USER + 1)
+// win message to toggle UI
+// lparam: 0 - use wparam as show/hide, 1 - toggle
+// wparam: 0 - hide, 1 - show
+#define WM_TOGGLE_CONFIG_WINDOW (WM_USER + 2)
 
 #define RETURN_IF_FAILED(hr) if (FAILED(hr)) return hr;
 
@@ -26,7 +31,7 @@ public:
     {
 
     }
-    void CreateViews(ID3D11Device* device, ID3D11Texture2D* texture, bool createRtv = true, bool createSrv = true)
+    void CreateViews(ID3D11Device* device, ID3D11Texture2D* texture, bool createRtv = true, bool createSrv = true, bool createUav = true)
     {
         m_texture = texture;
 
@@ -48,6 +53,17 @@ public:
             {
                 device->CreateRenderTargetView(texture, nullptr, &m_rtv);
             }
+
+            if (createUav)
+            {
+                D3D11_TEXTURE2D_DESC desc;
+                texture->GetDesc(&desc);
+                D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+                uavDesc.Format = desc.Format;
+                uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+                uavDesc.Texture2D.MipSlice = 0;
+                device->CreateUnorderedAccessView(texture, &uavDesc, &m_uav);
+            }
         }
     }
     void Clear()
@@ -60,6 +76,7 @@ public:
     HRESULT RecreateTexture(ID3D11Device* device, DXGI_FORMAT format, UINT width, UINT height)
     {
         HRESULT hr = S_OK;
+
         if (GetTexture())
         {
             ID3D11Texture2D* texture = GetTexture();
@@ -71,6 +88,12 @@ public:
                 Clear();
             }
         }
+        
+        if (width == 0 || height == 0)
+        {
+            return DXGI_ERROR_INVALID_CALL;
+        }
+
         if (!GetTexture())
         {
             ID3D11Texture2D* texture = nullptr;
@@ -83,7 +106,7 @@ public:
             desc.SampleDesc.Count = 1;
             desc.SampleDesc.Quality = 0;
             desc.Usage = D3D11_USAGE_DEFAULT;
-            desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+            desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET | D3D11_BIND_UNORDERED_ACCESS;
             desc.CPUAccessFlags = 0;
             desc.MiscFlags = 0;
             hr = device->CreateTexture2D(&desc, nullptr, &texture);
@@ -104,8 +127,14 @@ public:
     {
         return m_rtv.Get();
     }
+    ID3D11UnorderedAccessView* GetUAV() const
+    {
+        return m_uav.Get();
+    }
+
 private:
     ComPtr<ID3D11Texture2D> m_texture;
     ComPtr<ID3D11ShaderResourceView> m_srv;
     ComPtr<ID3D11RenderTargetView> m_rtv;
+    ComPtr<ID3D11UnorderedAccessView> m_uav;
 };

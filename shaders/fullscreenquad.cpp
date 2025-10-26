@@ -48,64 +48,72 @@ FullScreenQuad::~FullScreenQuad()
 HRESULT FullScreenQuad::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context)
 {
     HRESULT hr = S_OK;
+    if (m_device != device)
+    {
+        m_vertexShader = nullptr;
+    }
+
     m_device = device;
     m_context = context;
 
-    ID3DBlob* errorBlob = nullptr;
-
-    // Compile and create vertex shader
-    ID3DBlob* vsBlob = nullptr;
-    hr = D3DCompile(QUAD_VS, strlen(QUAD_VS), "VS", nullptr, nullptr, "VS", "vs_4_0", 0, 0, &vsBlob, &errorBlob);
-    RETURN_IF_FAILED(hr);
-    hr = m_device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &m_vertexShader);
-    RETURN_IF_FAILED(hr);
-
-    // Create input layout
-    D3D11_INPUT_ELEMENT_DESC layout[] =
+    if (!m_vertexShader)
     {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-    };
-    UINT numElements = ARRAYSIZE(layout);
+        ID3DBlob* errorBlob = nullptr;
 
-    hr = device->CreateInputLayout(layout, numElements, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_vertexLayout);
-    vsBlob->Release();
-    RETURN_IF_FAILED(hr);
+        // Compile and create vertex shader
+        ID3DBlob* vsBlob = nullptr;
+        hr = D3DCompile(QUAD_VS, strlen(QUAD_VS), "VS", nullptr, nullptr, "VS", "vs_4_0", 0, 0, &vsBlob, &errorBlob);
+        RETURN_IF_FAILED(hr);
+        hr = m_device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &m_vertexShader);
+        RETURN_IF_FAILED(hr);
 
-    // Define a simple quad with texture coordinates
-    Vertex quadVertices[] =
-    {
-        { XMFLOAT3(-1.0f, -1.0f, 0.0f), XMFLOAT2(0.0f, 1.0f) },
-        { XMFLOAT3(-1.0f, 1.0f, 0.0f), XMFLOAT2(0.0f, 0.0f) },
-        { XMFLOAT3(1.0f, -1.0f, 0.0f), XMFLOAT2(1.0f, 1.0f) },
-        { XMFLOAT3(1.0f, 1.0f, 0.0f), XMFLOAT2(1.0f, 0.0f) },
-    };
+        // Create input layout
+        D3D11_INPUT_ELEMENT_DESC layout[] =
+        {
+            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        };
+        UINT numElements = ARRAYSIZE(layout);
 
-    D3D11_BUFFER_DESC bufferDesc = {};
-    bufferDesc.Usage = D3D11_USAGE_DEFAULT;
-    bufferDesc.ByteWidth = sizeof(quadVertices);
-    bufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        hr = device->CreateInputLayout(layout, numElements, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_vertexLayout);
+        vsBlob->Release();
+        RETURN_IF_FAILED(hr);
 
-    D3D11_SUBRESOURCE_DATA initData = {};
-    initData.pSysMem = quadVertices;
+        // Define a simple quad with texture coordinates
+        Vertex quadVertices[] =
+        {
+            { XMFLOAT3(-1.0f, -1.0f, 0.0f), XMFLOAT2(0.0f, 1.0f) },
+            { XMFLOAT3(-1.0f, 1.0f, 0.0f), XMFLOAT2(0.0f, 0.0f) },
+            { XMFLOAT3(1.0f, -1.0f, 0.0f), XMFLOAT2(1.0f, 1.0f) },
+            { XMFLOAT3(1.0f, 1.0f, 0.0f), XMFLOAT2(1.0f, 0.0f) },
+        };
 
-    hr = device->CreateBuffer(&bufferDesc, &initData, &m_vertexBuffer);
+        D3D11_BUFFER_DESC bufferDesc = {};
+        bufferDesc.Usage = D3D11_USAGE_DEFAULT;
+        bufferDesc.ByteWidth = sizeof(quadVertices);
+        bufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+
+        D3D11_SUBRESOURCE_DATA initData = {};
+        initData.pSysMem = quadVertices;
+
+        hr = device->CreateBuffer(&bufferDesc, &initData, &m_vertexBuffer);
+    }
 
     return hr;
 }
 
-HRESULT FullScreenQuad::Render()
+HRESULT FullScreenQuad::Render(ID3D11DeviceContext* context)
 {
     // Set the vertex buffer
-    m_context->IASetInputLayout(m_vertexLayout.Get());
+    context->IASetInputLayout(m_vertexLayout.Get());
 
     UINT stride = sizeof(Vertex);
     UINT offset = 0;
-    m_context->IASetVertexBuffers(0, 1, m_vertexBuffer.GetAddressOf(), &stride, &offset);
+    context->IASetVertexBuffers(0, 1, m_vertexBuffer.GetAddressOf(), &stride, &offset);
 
-    m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 
-    m_context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
+    context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
 
     return S_OK;
 }

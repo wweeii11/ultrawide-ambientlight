@@ -17,15 +17,14 @@ public:
     Copy();
     ~Copy();
     HRESULT Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context);
-    HRESULT Render(TextureView target, TextureView source, Flip flip = FlipNone);
+    HRESULT Render(ID3D11DeviceContext* context, TextureView target, TextureView source, Flip flip = FlipNone);
 private:
     ComPtr<ID3D11Device> m_device;
     ComPtr<ID3D11DeviceContext> m_context;
 
     
-    ComPtr<ID3D11PixelShader> m_pixelShader;
-    ComPtr<ID3D11PixelShader> m_pixelShader_hflip;
-    ComPtr<ID3D11PixelShader> m_pixelShader_vflip;
+    ComPtr<ID3D11ComputeShader> m_shader;
+    ComPtr<ID3D11Buffer>        m_params;
     ComPtr<ID3D11SamplerState> m_samplerState;
 
 };

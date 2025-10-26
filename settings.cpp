@@ -4,7 +4,7 @@
 
 #define CONFIG_FILE ".\\config.ini"
 
-#define UPDATE_INTERVAL 500
+#define UPDATE_INTERVAL 250
 
 ULONGLONG lastCheckTime = 0;
 FILETIME lastWriteTime = {};
@@ -121,7 +121,13 @@ bool ReadSettings(AppSettings& settings)
     float autoDetectionBlackRatio = DEFAULT_AUTO_DETECTION_BLACK_RATIO;
     inipp::get_value(ini.sections["Game"], "AutoDetectionBlackRatio", autoDetectionBlackRatio);
 
+    bool autoDetectionLightMask = DEFAULT_AUTO_DETECTION_LIGHT_MASK;
+    inipp::get_value(ini.sections["Game"], "AutoDetectionLightMask", autoDetectionLightMask);
 
+    bool showInTaskbar = DEFAULT_SHOW_IN_TASKBAR;
+    inipp::get_value(ini.sections["UI"], "ShowInTaskbar", showInTaskbar);
+
+    settings.loaded = true;
     settings.blurPasses = blur;
     settings.blurDownscale = blurSize;
     settings.blurSamples = blurSamples;
@@ -137,6 +143,8 @@ bool ReadSettings(AppSettings& settings)
     settings.autoDetectionTime = autoDetectionTime;
     settings.autoDetectionBrightnessThreshold = autoDetectionBrightnessThreshold;
     settings.autoDetectionBlackRatio = autoDetectionBlackRatio;
+    settings.autoDetectionLightMask = autoDetectionLightMask;
+    settings.showInTaskbar = showInTaskbar;
 
     std::string currentRes = "";
     inipp::get_value(ini.sections["Game"], "Resolution", currentRes);
@@ -148,7 +156,7 @@ bool ReadSettings(AppSettings& settings)
     {
         std::string name = sec.first;
 
-        if (name == "Game")
+        if (name == "Game" or name == "UI")
             continue;
 
         int res_width = 0;
@@ -157,6 +165,9 @@ bool ReadSettings(AppSettings& settings)
 
         inipp::get_value(ini.sections[name.c_str()], "Width", res_width);
         inipp::get_value(ini.sections[name.c_str()], "Height", res_height);
+
+        if (res_width == 0 || res_height == 0)
+            continue;
 
         //settings.resolutions
         ResolutionSettings rs = {};
@@ -221,6 +232,8 @@ void SaveSettings(AppSettings& settings)
     ini.sections["Game"]["AutoDetectionTime"] = std::to_string(settings.autoDetectionTime);
     ini.sections["Game"]["AutoDetectionBrightnessThreshold"] = std::to_string(settings.autoDetectionBrightnessThreshold);
     ini.sections["Game"]["AutoDetectionBlackRatio"] = std::to_string(settings.autoDetectionBlackRatio);
+    ini.sections["Game"]["AutoDetectionLightMask"] = settings.autoDetectionLightMask ? "true" : "false";
+    ini.sections["UI"]["ShowInTaskbar"] = settings.showInTaskbar ? "true" : "false";
 
 
     for (auto& res : settings.resolutions.available)

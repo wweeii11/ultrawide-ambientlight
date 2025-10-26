@@ -36,7 +36,6 @@ private:
     ComPtr<IDCompositionVisual> m_dcompVisual;
 
     DesktopCapture m_capture;
-    FullScreenQuad m_fullscreenQuad;
     Blur m_blurDownscale;
     Blur m_blurPre;
     Copy m_copy;
@@ -45,37 +44,22 @@ private:
 
     bool m_effectRendered;
     bool m_presented;
+
     UINT m_gameWidth;
     UINT m_gameHeight;
+    
     UINT m_windowWidth;
     UINT m_windowHeight;
-    UINT m_effectWidth;
-    UINT m_effectHeight;
+    
     UINT m_effectZoom;
-    UINT m_blurSize;
-    UINT m_blurPasses;
-    UINT m_blurSamples;
-    bool m_vignetteEnabled;
-    float m_vignetteIntesity;
-    float m_vignetteRadius;
-    float m_vignetteSmoothness;
-    bool m_mirror;
-    bool m_stretched;
-    bool m_useAutoDetect;
-    int m_autoDetectionTime;
-    float m_autoDetectionBrightnessThreshold;
-    float m_autoDetectionBlackRatio;
-    UINT m_autoWidth = 0;
-    UINT m_autoHeight = 0;
+
+    std::vector<D3D11_BOX> m_blackBars;
 
     RECT m_dirtyRects[2];
 
     UINT m_frameRate;
     INT64 m_lastPresentTime;
     INT64 m_perfFreq;
-
-    // render effect at top/bottom of screen instead of left/right
-    bool m_topbottom;
 
     TextureView m_gameTexture;
     TextureView m_offscreen1;
@@ -85,6 +69,7 @@ private:
 
     HRESULT CreateOffscreen(DXGI_FORMAT format);
 
+    bool ShouldRenderEffect();
     bool RenderEffects();
     void RenderConfig();
     void RenderBackBuffer();
@@ -96,5 +81,5 @@ private:
 
     void ShowConfigWindow(bool show);
     bool m_showConfigWindow;
-    bool m_clearConfigWIndow;
+    bool m_clearConfigWindow;
 };
