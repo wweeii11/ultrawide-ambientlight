@@ -161,6 +161,7 @@ void AmbientLight::ValidateSettings()
 
     // Validate frame rate
     m_settings.frameRate = std::clamp(m_settings.frameRate, 10u, 1000u);
+    m_frameRate = m_settings.frameRate;
 
     // Validate zoom
     m_settings.zoom = std::clamp(m_settings.zoom, 0u, 16u);
