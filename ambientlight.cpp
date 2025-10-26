@@ -425,11 +425,14 @@ void AmbientLight::RenderBackBuffer()
     float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     m_deferred->ClearRenderTargetView(rtv_back, color);
 
-    if (m_settings.vignetteEnabled && m_effectRendered)
-        m_vignette.Render(m_deferred.Get(), m_offscreen3);
+    if (m_effectRendered)
+    {
+        if (m_settings.vignetteEnabled)
+            m_vignette.Render(m_deferred.Get(), m_offscreen3);
 
-    if (m_settings.useAutoDetection && m_effectRendered)
-        m_detection.RenderMask(m_deferred.Get(), m_offscreen3);
+        if (m_settings.useAutoDetection && m_settings.autoDetectionLightMask)
+            m_detection.RenderMask(m_deferred.Get(), m_offscreen3);
+    }
 
     m_deferred->CopyResource(backview.GetTexture(), m_offscreen3.GetTexture());
 

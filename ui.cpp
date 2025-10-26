@@ -89,7 +89,7 @@ void InitUI(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
-    // load arial font
+    // load Segoe UI font
     ImFont* arial_font = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 20.0f);
     io.Fonts->Build();
 
@@ -107,7 +107,7 @@ void InitUI(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(device, device_context);
 
-    // first
+    // first initialization
     if (firstInit)
     {
         PostMessage(hwnd, WM_TOGGLE_CONFIG_WINDOW, 1, 0);
@@ -129,9 +129,9 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 
     bool open = true;
-    ImGui::Begin("Ambient light", &open, 0);
+    ImGui::Begin("Ambient Light", &open, 0);
 
-    ImGui::Text("Press Esc or system tray icon to toggle showing config window");
+    ImGui::Text("Press Esc or the system tray icon to show or hide the configuration window");
 
     if (ImGui::CollapsingHeader("Game/Content Resolution", ImGuiTreeNodeFlags_DefaultOpen))
     {
@@ -140,6 +140,17 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
 
         if (settings.useAutoDetection)
         {
+            ImGui::Indent();
+            if (ImGui::Checkbox("Light Peek", &settings.autoDetectionLightMask))
+            {
+                SaveSettings(settings);
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            {
+                ImGui::SetTooltip("Keep bright parts in the black bar areas visible");
+            }
+            ImGui::Unindent();
+
             ImGui::Text("Detected: %d x %d", gameWidth, gameHeight);
         }
         else
@@ -185,9 +196,9 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
     if (ImGui::CollapsingHeader("Effects", ImGuiTreeNodeFlags_DefaultOpen))
     {
         ImGui::SameLine(); HelpMarker(
-            "Click and drag to edit value.\n"
-            "Hold SHIFT/ALT for faster/slower edit.\n"
-            "Double-click or CTRL+click to input value.");
+            "Click and drag to edit a value.\n"
+            "Hold Shift/Alt for faster/slower edits.\n"
+            "Double-click or Ctrl+click to enter a value.");
 
         ImGui::SeparatorText("Blur");
         {

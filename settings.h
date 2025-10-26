@@ -20,6 +20,7 @@
 #define DEFAULT_AUTO_DETECTION_TIME 500
 #define DEFAULT_AUTO_DETECTION_BRIGHTNESS_THRESHOLD 0.03f
 #define DEFAULT_AUTO_DETECTION_BLACK_RATIO 0.60f
+#define DEFAULT_AUTO_DETECTION_LIGHT_MASK true
 #define DEFAULT_SHOW_IN_TASKBAR     true
 
 struct ResolutionSettings
@@ -56,6 +57,7 @@ struct AppSettings
     float autoDetectionBrightnessThreshold = DEFAULT_AUTO_DETECTION_BRIGHTNESS_THRESHOLD;
     float autoDetectionBlackRatio = DEFAULT_AUTO_DETECTION_BLACK_RATIO;
     int autoDetectionTime = DEFAULT_AUTO_DETECTION_TIME;
+    bool autoDetectionLightMask = DEFAULT_AUTO_DETECTION_LIGHT_MASK;
     bool showInTaskbar = DEFAULT_SHOW_IN_TASKBAR;
 };
 
