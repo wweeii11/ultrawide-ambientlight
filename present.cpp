@@ -126,6 +126,9 @@ LRESULT CALLBACK PresentWindow::WndProc(HWND hwnd, UINT message, WPARAM wParam, 
 
     case WM_DISPLAYCHANGE:
     {
+        RECT desktopRect;
+        GetWindowRect(GetDesktopWindow(), &desktopRect);
+        SetWindowPos(hwnd, nullptr, 0, 0, desktopRect.right, desktopRect.bottom, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
         pRender->Initialize(hwnd);
     }
     return 0;

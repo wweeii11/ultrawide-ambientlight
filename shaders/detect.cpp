@@ -54,6 +54,8 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
     {
         m_lumaShader = nullptr;
         m_maskShader = nullptr;
+        m_width = 0;
+        m_height = 0;
     }
 
     m_device = device;
