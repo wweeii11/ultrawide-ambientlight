@@ -264,7 +264,7 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 
     UINT width2 = m_settings.stretched ? m_windowWidth : m_gameWidth;
     UINT height2 = m_settings.stretched ? m_windowHeight : m_gameHeight;
-    m_offscreen2.RecreateTexture(m_device.Get(), format,
+     m_offscreen2.RecreateTexture(m_device.Get(), format,
         width2 + m_effectZoom * 2,
         height2 + m_effectZoom * 2);
 
@@ -369,8 +369,29 @@ bool AmbientLight::RenderEffects()
     
     for (int i = 0; i < 2; i++)
     {
-        D3D11_BOX src = m_settings.mirrored ? GetMirroredBox(m_blackBars[i], m_windowWidth, m_windowHeight) : m_blackBars[i]; 
+        D3D11_BOX src = m_settings.mirrored ? GetMirroredBox(m_blackBars[i], m_windowWidth, m_windowHeight) : m_blackBars[i];
         D3D11_BOX dst = m_blackBars[i];
+
+        if (!m_settings.stretched)
+        {
+            // adjust src box from windows size to game size
+            if (m_gameHeight == m_windowHeight)
+            {
+                if (src.left > m_windowWidth / 2)
+                {
+                    src.left -= (m_windowWidth - m_gameWidth);
+                    src.right -= (m_windowWidth - m_gameWidth);
+                }
+            }
+            else if (m_gameWidth == m_windowWidth)
+            {
+                if (src.top > m_windowHeight / 2)
+                {
+                    src.top -= (m_windowHeight - m_gameHeight);
+                    src.bottom -= (m_windowHeight - m_gameHeight);
+                }
+            }
+        }
 
         src.left += m_effectZoom;
         src.right += m_effectZoom;
