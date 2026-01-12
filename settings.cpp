@@ -1,21 +1,89 @@
 #include "common.h"
 #include "inipp.h"
 #include <fstream>
+#include <shlobj.h>
+#include <filesystem>
 
-#define CONFIG_FILE ".\\config.ini"
-
-#define UPDATE_INTERVAL 250
+const std::wstring CONFIG_FILE_DEFAULT = L"config.ini";
+const std::wstring APP_SUBFOLDER = L"ultrawide-ambientlight";
 
 ULONGLONG lastCheckTime = 0;
 FILETIME lastWriteTime = {};
 
+#define UPDATE_INTERVAL 250
 
-FILETIME GetFileLastWriteTime(LPCTSTR filePath)
+namespace fs = std::filesystem;
+
+bool IsWritable(const fs::path& path) {
+    // If file doesn't exist, check if the directory is writable by trying to create a dummy file
+    if (!fs::exists(path)) {
+        std::ofstream testFile(path);
+        if (testFile.is_open()) {
+            testFile.close();
+            fs::remove(path);
+            return true;
+        }
+        return false;
+    }
+
+    // If file exists, try to open it for appending
+    std::ofstream file(path, std::ios::app);
+    return file.is_open();
+}
+
+std::wstring GetCurrentConfigFilePath()
+{
+    // first try to open CONFIG_FILE_DEFAULT and see if it's writable
+    // if it's writable, set CurrentConfigFile to that
+    fs::path defaultPath = fs::current_path() / CONFIG_FILE_DEFAULT;
+
+    // 1. Try to use the local directory (portable mode logic)
+    if (IsWritable(defaultPath)) {
+        return defaultPath.wstring();
+    }
+
+    // if it's not writable, that means application is running from a protected location
+    // check if config.ini exists in appdata\local\ultrawide-ambientlight\
+    // if not exists, create the folder and copy default config there 
+    PWSTR szPath = NULL;
+    // FOLDERID_LocalAppData corresponds to %LOCALAPPDATA%
+    HRESULT hr = SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, NULL, &szPath);
+
+    if (SUCCEEDED(hr)) {
+        fs::path localAppData(szPath);
+        CoTaskMemFree(szPath); // Free the memory allocated by Windows
+
+        fs::path appFolder = localAppData / APP_SUBFOLDER;
+        fs::path appDataConfig = appFolder / CONFIG_FILE_DEFAULT;
+
+        // Create directory if it doesn't exist
+        if (!fs::exists(appFolder)) {
+            fs::create_directories(appFolder);
+        }
+
+        // Copy default config if it doesn't exist in AppData yet
+        if (!fs::exists(appDataConfig) && fs::exists(defaultPath)) {
+            try {
+                fs::copy_file(defaultPath, appDataConfig, fs::copy_options::overwrite_existing);
+            }
+            catch (const fs::filesystem_error& e) {
+                // Handle copy error (e.g., source file missing)
+                (e);
+            }
+        }
+
+        return appDataConfig.wstring();
+    }
+
+    return defaultPath.wstring();
+}
+
+FILETIME GetFileLastWriteTime(LPCWSTR filePath)
 {
     FILETIME ftWrite = { 0 };
 
     // Open the file to get its attributes
-    HANDLE hFile = CreateFile(
+    HANDLE hFile = CreateFileW(
         filePath,
         GENERIC_READ,
         FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -27,7 +95,7 @@ FILETIME GetFileLastWriteTime(LPCTSTR filePath)
 
     if (hFile == INVALID_HANDLE_VALUE)
     {
-        hFile = CreateFile(
+        hFile = CreateFileW(
             filePath,
             GENERIC_WRITE,
             FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -62,7 +130,7 @@ bool ReadSettings(AppSettings& settings)
 
     lastCheckTime = now;
 
-    FILETIME currentWriteTime = GetFileLastWriteTime(CONFIG_FILE);
+    FILETIME currentWriteTime = GetFileLastWriteTime(GetCurrentConfigFilePath().c_str());
     if (CompareFileTime(currentWriteTime, lastWriteTime))
     {
         return false;
@@ -72,7 +140,7 @@ bool ReadSettings(AppSettings& settings)
 
     // read config file
     inipp::Ini<char> ini;
-    std::ifstream is("config.ini");
+    std::ifstream is(GetCurrentConfigFilePath());
     ini.parse(is);
     ini.strip_trailing_comments();
 
@@ -212,7 +280,7 @@ void SaveSettings(AppSettings& settings)
 {
     // config file
     inipp::Ini<char> ini;
-    std::ifstream is("config.ini");
+    std::ifstream is(GetCurrentConfigFilePath());
     ini.parse(is);
     ini.strip_trailing_comments();
 
@@ -244,7 +312,7 @@ void SaveSettings(AppSettings& settings)
 
     is.close();
 
-    std::ofstream os("config.ini");
+    std::ofstream os(GetCurrentConfigFilePath());
     ini.generate(os);
     os.close();
 }
