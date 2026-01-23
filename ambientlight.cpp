@@ -101,9 +101,12 @@ void AmbientLight::UpdateSettings()
         m_detection.Initialize(m_device,
             m_immediate,
             m_windowWidth,
-            m_windowHeight, 
-            m_settings.autoDetectionBrightnessThreshold, 
-            m_settings.autoDetectionBlackRatio);
+            m_windowHeight,
+            m_settings.autoDetectionBrightnessThreshold,
+            m_settings.autoDetectionBlackRatio,
+            m_settings.autoDetectionSymmetricBars,
+            m_settings.autoDetectionReservedArea ? m_settings.autoDetectionReservedWidth : 0,
+            m_settings.autoDetectionReservedArea ? m_settings.autoDetectionReservedHeight : 0);
 
         UpdateUI(m_hwnd, m_settings);
     }
@@ -115,7 +118,7 @@ void AmbientLight::ValidateSettings()
     {
         m_blackBars = m_detection.GetDetectedBoxes();
     }
-    else 
+    else
     {
         // Validate game width and height
         UINT width = m_settings.gameWidth;
@@ -264,7 +267,7 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 
     UINT width2 = m_settings.stretched ? m_windowWidth : m_gameWidth;
     UINT height2 = m_settings.stretched ? m_windowHeight : m_gameHeight;
-     m_offscreen2.RecreateTexture(m_device.Get(), format,
+    m_offscreen2.RecreateTexture(m_device.Get(), format,
         width2 + m_effectZoom * 2,
         height2 + m_effectZoom * 2);
 
@@ -366,7 +369,7 @@ bool AmbientLight::RenderEffects()
     D3D11_TEXTURE2D_DESC desc2 = {};
     m_offscreen2.GetTexture()->GetDesc(&desc2);
 
-    
+
     for (int i = 0; i < 2; i++)
     {
         D3D11_BOX src = m_settings.mirrored ? GetMirroredBox(m_blackBars[i], m_windowWidth, m_windowHeight) : m_blackBars[i];
@@ -377,18 +380,51 @@ bool AmbientLight::RenderEffects()
             // adjust src box from windows size to game size
             if (m_gameHeight == m_windowHeight)
             {
-                if (src.left > m_windowWidth / 2)
+                if (m_gameWidth > RECT_WIDTH(src))
                 {
-                    src.left -= (m_windowWidth - m_gameWidth);
-                    src.right -= (m_windowWidth - m_gameWidth);
+                    if (src.left > m_windowWidth / 2)
+                    {
+                        src.left -= (m_windowWidth - m_gameWidth);
+                        src.right -= (m_windowWidth - m_gameWidth);
+                    }
+                }
+                else
+                {
+                    // if game width is smaller than black bar width, clamp to game width
+                    if (src.left > m_windowWidth / 2)
+                    {
+                        src.left = m_gameWidth / 2;
+                        src.right = m_gameWidth;
+                    }
+                    else
+                    {
+                        src.left = 0;
+                        src.right = m_gameWidth / 2;
+                    }
                 }
             }
             else if (m_gameWidth == m_windowWidth)
             {
-                if (src.top > m_windowHeight / 2)
+                if (m_gameHeight > RECT_HEIGHT(src))
                 {
-                    src.top -= (m_windowHeight - m_gameHeight);
-                    src.bottom -= (m_windowHeight - m_gameHeight);
+                    if (src.top > m_windowHeight / 2)
+                    {
+                        src.top -= (m_windowHeight - m_gameHeight);
+                        src.bottom -= (m_windowHeight - m_gameHeight);
+                    }
+                }
+                else
+                {
+                    if (src.top > m_windowHeight / 2)
+                    {
+                        src.top = m_gameHeight / 2;
+                        src.bottom = m_gameHeight;
+                    }
+                    else
+                    {
+                        src.top = 0;
+                        src.bottom = m_gameHeight / 2;
+                    }
                 }
             }
         }
@@ -510,7 +546,7 @@ void AmbientLight::Present()
         {
             memset(m_dirtyRects, 0, sizeof(m_dirtyRects));
             int numRects = 0;
-            for (auto &box : m_blackBars)
+            for (auto& box : m_blackBars)
             {
                 if (IS_BOX_EMPTY(box))
                     continue;
@@ -520,7 +556,7 @@ void AmbientLight::Present()
                 m_dirtyRects[numRects].bottom = box.bottom;
                 numRects++;
             }
-            
+
             DXGI_PRESENT_PARAMETERS param = {};
             param.DirtyRectsCount = numRects;
             param.pDirtyRects = m_dirtyRects;

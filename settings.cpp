@@ -4,6 +4,7 @@
 #include <shlobj.h>
 #include <filesystem>
 
+const std::wstring TEST_FILE = L"test.temp";
 const std::wstring CONFIG_FILE_DEFAULT = L"config.ini";
 const std::wstring APP_SUBFOLDER = L"ultrawide-ambientlight";
 
@@ -31,15 +32,15 @@ bool IsWritable(const fs::path& path) {
     return file.is_open();
 }
 
-std::wstring GetCurrentConfigFilePath()
+fs::path GetDataPath()
 {
     // first try to open CONFIG_FILE_DEFAULT and see if it's writable
     // if it's writable, set CurrentConfigFile to that
-    fs::path defaultPath = fs::current_path() / CONFIG_FILE_DEFAULT;
+    fs::path defaultPath = fs::current_path();
 
     // 1. Try to use the local directory (portable mode logic)
-    if (IsWritable(defaultPath)) {
-        return defaultPath.wstring();
+    if (IsWritable(defaultPath / TEST_FILE)) {
+        return defaultPath;
     }
 
     // if it's not writable, that means application is running from a protected location
@@ -54,28 +55,42 @@ std::wstring GetCurrentConfigFilePath()
         CoTaskMemFree(szPath); // Free the memory allocated by Windows
 
         fs::path appFolder = localAppData / APP_SUBFOLDER;
-        fs::path appDataConfig = appFolder / CONFIG_FILE_DEFAULT;
-
+        
         // Create directory if it doesn't exist
         if (!fs::exists(appFolder)) {
             fs::create_directories(appFolder);
         }
 
-        // Copy default config if it doesn't exist in AppData yet
-        if (!fs::exists(appDataConfig) && fs::exists(defaultPath)) {
-            try {
-                fs::copy_file(defaultPath, appDataConfig, fs::copy_options::overwrite_existing);
-            }
-            catch (const fs::filesystem_error& e) {
-                // Handle copy error (e.g., source file missing)
-                (e);
-            }
-        }
-
-        return appDataConfig.wstring();
+        return appFolder;
     }
 
-    return defaultPath.wstring();
+    return defaultPath;
+}
+
+fs::path GetDataFile(std::wstring fileName)
+{
+    fs::path dataPath = GetDataPath();
+    fs::path fullPath = dataPath / fileName;
+    return fullPath;
+}
+
+std::wstring GetCurrentConfigFilePath()
+{
+    fs::path defaultPath = fs::current_path() / CONFIG_FILE_DEFAULT;
+    fs::path appDataConfig = GetDataFile(CONFIG_FILE_DEFAULT);
+
+    // Copy default config if it doesn't exist in AppData yet
+    if (!fs::exists(appDataConfig) && fs::exists(defaultPath)) {
+        try {
+            fs::copy_file(defaultPath, appDataConfig, fs::copy_options::overwrite_existing);
+        }
+        catch (const fs::filesystem_error& e) {
+            // Handle copy error (e.g., source file missing)
+            (e);
+        }
+    }
+
+    return appDataConfig.wstring();
 }
 
 FILETIME GetFileLastWriteTime(LPCWSTR filePath)
@@ -192,6 +207,18 @@ bool ReadSettings(AppSettings& settings)
     bool autoDetectionLightMask = DEFAULT_AUTO_DETECTION_LIGHT_MASK;
     inipp::get_value(ini.sections["Game"], "AutoDetectionLightMask", autoDetectionLightMask);
 
+    bool autoDetectionSymmetricBars = DEFAULT_AUTO_DETECTION_SYMMETRIC_BARS;
+    inipp::get_value(ini.sections["Game"], "AutoDetectionSymmetricBars", autoDetectionSymmetricBars);
+
+    bool autoDetectionReservedArea = DEFAULT_AUTO_DETECTION_RESERVED_AREA;
+    inipp::get_value(ini.sections["Game"], "AutoDetectionReservedArea", autoDetectionReservedArea);
+
+    UINT autoDetectionReservedWidth = DEFAULT_AUTO_DETECTION_RESERVED_WIDTH;
+    inipp::get_value(ini.sections["Game"], "AutoDetectionReservedWidth", autoDetectionReservedWidth);
+
+    UINT autoDetectionReservedHeight = DEFAULT_AUTO_DETECTION_RESERVED_HEIGHT;
+    inipp::get_value(ini.sections["Game"], "AutoDetectionReservedHeight", autoDetectionReservedHeight);
+
     bool showInTaskbar = DEFAULT_SHOW_IN_TASKBAR;
     inipp::get_value(ini.sections["UI"], "ShowInTaskbar", showInTaskbar);
 
@@ -213,6 +240,10 @@ bool ReadSettings(AppSettings& settings)
     settings.autoDetectionBlackRatio = autoDetectionBlackRatio;
     settings.autoDetectionLightMask = autoDetectionLightMask;
     settings.showInTaskbar = showInTaskbar;
+    settings.autoDetectionSymmetricBars = autoDetectionSymmetricBars;
+    settings.autoDetectionReservedArea = autoDetectionReservedArea;
+    settings.autoDetectionReservedWidth = autoDetectionReservedWidth;
+    settings.autoDetectionReservedHeight = autoDetectionReservedHeight;
 
     std::string currentRes = "";
     inipp::get_value(ini.sections["Game"], "Resolution", currentRes);
@@ -301,6 +332,10 @@ void SaveSettings(AppSettings& settings)
     ini.sections["Game"]["AutoDetectionBrightnessThreshold"] = std::to_string(settings.autoDetectionBrightnessThreshold);
     ini.sections["Game"]["AutoDetectionBlackRatio"] = std::to_string(settings.autoDetectionBlackRatio);
     ini.sections["Game"]["AutoDetectionLightMask"] = settings.autoDetectionLightMask ? "true" : "false";
+    ini.sections["Game"]["AutoDetectionSymmetricBars"] = settings.autoDetectionSymmetricBars ? "true" : "false";
+    ini.sections["Game"]["AutoDetectionReservedArea"] = settings.autoDetectionReservedArea ? "true" : "false";
+    ini.sections["Game"]["AutoDetectionReservedWidth"] = std::to_string(settings.autoDetectionReservedWidth);
+    ini.sections["Game"]["AutoDetectionReservedHeight"] = std::to_string(settings.autoDetectionReservedHeight);
     ini.sections["UI"]["ShowInTaskbar"] = settings.showInTaskbar ? "true" : "false";
 
 

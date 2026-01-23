@@ -47,7 +47,10 @@ static void CreateLumaMaskAndStaging(
     dev->CreateTexture2D(&textureDesc, nullptr, stagingOut);
 }
 
-HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context, UINT width, UINT height, float blackThreshold, float blackRatio)
+HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context,
+    UINT width, UINT height,
+    float blackThreshold, float blackRatio, bool symmetricBars,
+    UINT reservedWidth, UINT reservedHeight)
 {
     HRESULT hr = S_OK;
     if (m_device != device)
@@ -89,12 +92,31 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
     m_height = height;
     m_blackThreshold = blackThreshold;
     m_blackRatio = blackRatio;
+    m_symmetricBars = symmetricBars;
     m_topBar = 0;
     m_bottomBar = m_height;
     m_leftBar = 0;
     m_rightBar = m_width;
     m_detectWidth = m_width;
     m_detectHeight = m_height;
+
+    m_reservedWidth = reservedWidth;
+    m_reservedHeight = reservedHeight;
+    if (reservedWidth > 0 && reservedHeight > 0)
+    {
+        float reservedAspect = (float)reservedWidth / (float)reservedHeight;
+        float windowAspect = (float)m_width / (float)m_height;
+
+        m_reservedHeight = (UINT)m_height;
+        m_reservedWidth = (UINT)std::round((float)m_reservedHeight * reservedAspect);
+
+        if (m_reservedWidth > m_width)
+        {
+            m_reservedWidth = (UINT)m_width;
+            m_reservedHeight = (UINT)std::round((float)m_reservedWidth / reservedAspect);
+        }
+    }
+
     return hr;
 }
 
@@ -224,6 +246,29 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
 
     context->Unmap(m_lumaStaging.Get(), 0);
 
+    if (m_reservedWidth > 0)
+    {
+        UINT maxBarWidth = (m_width - m_reservedWidth) / 2;
+        m_leftBar = min(m_leftBar, maxBarWidth);
+        m_rightBar = min(m_rightBar, maxBarWidth);
+    }
+    if (m_reservedHeight > 0)
+    {
+        UINT maxBarHeight = (m_height - m_reservedHeight) / 2;
+        m_topBar = min(m_topBar, maxBarHeight);
+        m_bottomBar = min(m_bottomBar, maxBarHeight);
+    }
+
+    if (m_symmetricBars)
+    {
+        UINT verticalBarSize = min(m_topBar, m_bottomBar);
+        m_topBar = verticalBarSize;
+        m_bottomBar = verticalBarSize;
+        UINT horizontalBarSize = min(m_leftBar, m_rightBar);
+        m_leftBar = horizontalBarSize;
+        m_rightBar = horizontalBarSize;
+    }
+
     m_detectWidth = m_width - m_leftBar - m_rightBar;
     m_detectHeight = m_height - m_topBar - m_bottomBar;
 
@@ -238,13 +283,6 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     else
     {
         m_detectWidth = m_width;
-    }
-
-    if (detectedAspect > 3.0f || detectedAspect < 0.5f)
-    {
-        // detected aspect is too extreme, ignore
-        m_detectWidth = m_width;
-        m_detectHeight = m_height;
     }
 
     return hr;
