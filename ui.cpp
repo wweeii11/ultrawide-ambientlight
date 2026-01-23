@@ -67,6 +67,8 @@ LRESULT UiWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     break;
 
     case WM_LBUTTONDOWN:
+    case WM_RBUTTONDOWN:
+    case WM_MBUTTONDOWN:
     {
         if (!ImGui::GetIO().WantCaptureMouse)
         {
@@ -80,12 +82,12 @@ LRESULT UiWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     return ImGui_ImplWin32_WndProcHandler(hwnd, message, wParam, lParam);
 }
 
-
 void InitUI(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context)
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
+
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
@@ -125,7 +127,6 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
     ImGuiIO& io = ImGui::GetIO();
 
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-    center.y /= 2;
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 
     bool open = true;
@@ -140,20 +141,86 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
 
         if (settings.useAutoDetection)
         {
-            ImGui::Indent();
-            if (ImGui::Checkbox("Light Peek", &settings.autoDetectionLightMask))
-            {
-                SaveSettings(settings);
-            }
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-            {
-                ImGui::SetTooltip("Keep bright parts in the black bar areas visible");
-            }
-            ImGui::Unindent();
-
             ImGui::Text("Detected: %d x %d", gameWidth, gameHeight);
+
+            if (ImGui::CollapsingHeader("Detection", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                if (ImGui::Checkbox("Light Peek", &settings.autoDetectionLightMask))
+                {
+                    SaveSettings(settings);
+                }
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                {
+                    ImGui::SetTooltip(
+                        "Preserve bright highlights that appear inside detected black-bar regions.\n"
+                        "Enable this when you want small bright UI elements or overlays on letterboxed video\n"
+                        "to remain visible instead of being masked out by the black-bar detection.");
+                }
+
+                int brightnessPercent = (int)(settings.autoDetectionBrightnessThreshold * 100);
+                if (ImGui::DragInt("Detection Brightness", &brightnessPercent, 0.1f, 1, 100, "%d%%"))
+                {
+                    settings.autoDetectionBrightnessThreshold = float(brightnessPercent) / 100.0f;
+                    SaveSettings(settings);
+                }
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                {
+                    ImGui::SetTooltip(
+                        "Brightness threshold used to classify pixels as \"black\" for detection.\n"
+                        "Pixels darker than this value are considered part of black bars.\n"
+                        "Lower values make the detector more permissive (more pixels counted as black).\n"
+                        "Higher values make it stricter. Range: 1%% (dark) to 100%% (bright).");
+                }
+
+                int blackRatioPercent = (int)(settings.autoDetectionBlackRatio * 100);
+                if (ImGui::DragInt("Detection Ratio ", &blackRatioPercent, 0.1f, 1, 100, "%d%%%"))
+                {
+                    settings.autoDetectionBlackRatio = float(blackRatioPercent) / 100.0f;
+                    SaveSettings(settings);
+                }
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                {
+                    ImGui::SetTooltip(
+                        "Proportion of an analyzed area that must be below the brightness threshold to\n"
+                        "classify that area as a black bar.\n"
+                        "Increase this to avoid false positives (requires more of the area to be dark),\n"
+                        "or decrease to detect thinner/partial bars.");
+                }
+
+                if (ImGui::Checkbox("Symmetric", &settings.autoDetectionSymmetricBars))
+                {
+                    SaveSettings(settings);
+                }
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                {
+                    ImGui::SetTooltip(
+                        "Force detected black bars to be symmetric and align to the smaller side.");
+                }
+
+                if (ImGui::Checkbox("Reserved Area", &settings.autoDetectionReservedArea))
+                {
+                    SaveSettings(settings);
+                }
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                {
+                    ImGui::SetTooltip(
+                        "Exclude a centered rectangular region from black-bar detection.\n"
+                        "You can define it using pixel width/height (1920, 1080) or aspect ratio (e.g. 16, 9)");
+                }
+                if (settings.autoDetectionReservedArea)
+                {
+                    int reservedSize[2] = { (int)settings.autoDetectionReservedWidth, (int)settings.autoDetectionReservedHeight };
+                    if (ImGui::InputInt2("", reservedSize, ImGuiInputTextFlags_CharsDecimal))
+                    {
+                        settings.autoDetectionReservedWidth = (UINT)max(0, reservedSize[0]);
+                        settings.autoDetectionReservedHeight = (UINT)max(0, reservedSize[1]);
+
+                        SaveSettings(settings);
+                    }
+                }
+            }
         }
-        else
+        else 
         {
             if (ImGui::BeginCombo("Presets", settings.resolutions.current.c_str(), 0))
             {
@@ -283,19 +350,18 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
 
 void UpdateUI(HWND hwnd, AppSettings& settings)
 {
+    LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
     if (settings.showInTaskbar)
     {
-        LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
         exStyle |= WS_EX_APPWINDOW;
         exStyle &= ~WS_EX_TOOLWINDOW;
-        SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
     }
     else
     {
-        LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
         exStyle |= WS_EX_TOOLWINDOW;
         exStyle &= ~WS_EX_APPWINDOW;
-        SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
     }
+
+    SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
 }
 

@@ -66,9 +66,19 @@ set(SRC
 add_executable (ambientlight WIN32 ${SRC} ${GENERATED_SHADER_HEADERS})
 target_include_directories(ambientlight PRIVATE "imgui")
 
+# Additional target that's compiled with uiaccess
+add_executable (ambientlight_a WIN32 ${SRC} ${GENERATED_SHADER_HEADERS})
+target_include_directories(ambientlight_a PRIVATE "imgui")
+target_link_options(ambientlight_a PRIVATE "/MANIFESTUAC:level='asInvoker' uiAccess='true'")
+
+
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET ambientlight PROPERTY CXX_STANDARD 20)
+  set_property(TARGET ambientlight_a PROPERTY CXX_STANDARD 20)
 endif()
 
 install(TARGETS ambientlight DESTINATION bin)
+install(TARGETS ambientlight_a DESTINATION bin)
+# copy files from scripts folder to bin
+install(DIRECTORY scripts/ DESTINATION bin)
 install(FILES config.ini DESTINATION bin)
