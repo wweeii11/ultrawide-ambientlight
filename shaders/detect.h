@@ -19,8 +19,8 @@ public:
     HRESULT Detect(ID3D11DeviceContext* context, TextureView target);
     HRESULT RenderMask(ID3D11DeviceContext* context, TextureView target);
 
-    std::vector<D3D11_BOX> GetDetectedBoxes();
-    std::vector<D3D11_BOX> GetFixedBoxes(UINT gameWidth, UINT gameHeight);
+    std::vector<BlackBar> GetDetectedBars();
+    std::vector<BlackBar> GetFixedBars(UINT gameWidth, UINT gameHeight);
 
 private:
     ComPtr<ID3D11Device> m_device;

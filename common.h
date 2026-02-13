@@ -24,6 +24,69 @@ using namespace Microsoft::WRL;
 #define RECT_WIDTH(r) (r.right - r.left)
 #define RECT_HEIGHT(r) (r.bottom - r.top)
 
+enum BlackBarPosition
+{
+    Top,
+    Bottom,
+    Left,
+    Right
+};
+
+struct BlackBar
+{
+    UINT parentWidth;
+    UINT parentHeight;
+    UINT width;
+    UINT height;
+    BlackBarPosition position;
+
+    auto operator ==(BlackBar const& other) const
+    {
+        return parentWidth == other.parentWidth
+            && parentHeight == other.parentHeight
+            && width == other.width
+            && height == other.height
+            && position == other.position;
+    }
+
+    D3D11_BOX GetBox() const
+    {
+        UINT clampH = min(height, parentHeight);
+        UINT clampW = min(width, parentWidth);
+        D3D11_BOX box = {};
+        box.front = 0;
+        box.back = 1;
+        switch (position)
+        {
+        case Top:
+            box.left = 0;
+            box.top = 0;
+            box.right = parentWidth;
+            box.bottom = clampH;
+            break;
+        case Bottom:
+            box.left = 0;
+            box.top = parentHeight - clampH;
+            box.right = parentWidth;
+            box.bottom = parentHeight;
+            break;
+        case Left:
+            box.left = 0;
+            box.top = 0;
+            box.right = clampW;
+            box.bottom = parentHeight;
+            break;
+        case Right:
+            box.left = parentWidth - clampW;
+            box.top = 0;
+            box.right = parentWidth;
+            box.bottom = parentHeight;
+            break;
+        }
+        return box;
+    }
+};
+
 class TextureView
 {
 public:

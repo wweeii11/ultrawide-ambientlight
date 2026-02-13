@@ -53,7 +53,7 @@ private:
     
     UINT m_effectZoom;
 
-    std::vector<D3D11_BOX> m_blackBars;
+    std::vector<BlackBar> m_blackBars;
 
     RECT m_dirtyRects[2];
 

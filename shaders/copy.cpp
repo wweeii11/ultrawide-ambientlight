@@ -11,8 +11,18 @@ using namespace DirectX;
 __declspec(align(16))
 struct COPY_PARAMETERS
 {
-    UINT flipMode = 0; // 0=normal, 1=HFlip, 2=VFlip
-    XMFLOAT2 padding = {}; // keep 16-byte alignment
+    // Register 0: [x, y, z, w] -> 16 bytes
+    DirectX::XMFLOAT2 srcOffset;
+    DirectX::XMFLOAT2 srcSize;
+
+    // Register 1: [x, y, z, w] -> 16 bytes
+    DirectX::XMFLOAT2 dstOffset;
+    DirectX::XMFLOAT2 dstSize;
+
+    // Register 2: [x, y, z, w] -> 16 bytes
+    uint32_t flipHorizontal;
+    uint32_t flipVertical;
+    float    padding[2];           // Manual padding to fill the 4-component register
 };
 
 Copy::Copy()
@@ -41,9 +51,9 @@ HRESULT Copy::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext
 
         D3D11_SAMPLER_DESC samplerDesc = {};
         samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-        samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
-        samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
-        samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+        samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+        samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+        samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
         samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
         samplerDesc.MinLOD = 0;
         samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
@@ -60,12 +70,14 @@ HRESULT Copy::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext
     return hr;
 }
 
-HRESULT Copy::Render(ID3D11DeviceContext* context, TextureView target, TextureView source, Flip flip)
+HRESULT Copy::Render(ID3D11DeviceContext* context, TextureView target, UINT targetOffsetX, UINT targetOffsetY, UINT targetWidth, UINT targetHeight,
+    TextureView source, UINT sourceOffsetX, UINT sourceOffsetY, UINT sourceWidth, UINT sourceHeight,
+    Flip flip)
 {
     HRESULT hr = S_OK;
 
     if (!target.GetTexture() || !source.GetTexture())
-		return E_FAIL;
+        return E_FAIL;
 
     D3D11_TEXTURE2D_DESC target_desc = {};
     target.GetTexture()->GetDesc(&target_desc);
@@ -80,14 +92,18 @@ HRESULT Copy::Render(ID3D11DeviceContext* context, TextureView target, TextureVi
     switch (flip)
     {
     case FlipHorizontal:
-        copyParams.flipMode = 1;
+        copyParams.flipHorizontal = 1;
         break;
     case FlipVertical:
-        copyParams.flipMode = 2;
+        copyParams.flipVertical = 2;
         break;
-    default:
-        copyParams.flipMode = 0;
     }
+
+    copyParams.srcOffset = { static_cast<float>(sourceOffsetX), static_cast<float>(sourceOffsetY) };
+    copyParams.srcSize = { static_cast<float>(sourceWidth), static_cast<float>(sourceHeight) };
+    copyParams.dstOffset = { static_cast<float>(targetOffsetX), static_cast<float>(targetOffsetY) };
+    copyParams.dstSize = { static_cast<float>(targetWidth), static_cast<float>(targetHeight) };
+
     context->UpdateSubresource(m_params.Get(), 0, nullptr, &copyParams, sizeof(COPY_PARAMETERS), 0);
     context->CSSetConstantBuffers(0, 1, m_params.GetAddressOf());
 
@@ -97,8 +113,8 @@ HRESULT Copy::Render(ID3D11DeviceContext* context, TextureView target, TextureVi
     context->CSSetShaderResources(0, 1, &srv);
 
     context->Dispatch(
-        (target_desc.Width + 15) / 16,
-        (target_desc.Height + 15) / 16,
+        (targetWidth + 15) / 16,
+        (targetHeight + 15) / 16,
         1);
 
     uav = nullptr;
@@ -107,4 +123,17 @@ HRESULT Copy::Render(ID3D11DeviceContext* context, TextureView target, TextureVi
     context->CSSetShaderResources(0, 1, &srv);
 
     return S_OK;
+}
+
+HRESULT Copy::Render(ID3D11DeviceContext* context, TextureView target, TextureView source, Flip flip)
+{
+    D3D11_TEXTURE2D_DESC source_desc = {};
+    source.GetTexture()->GetDesc(&source_desc);
+
+    D3D11_TEXTURE2D_DESC target_desc = {};
+    target.GetTexture()->GetDesc(&target_desc);
+
+    return Render(context, target, 0, 0, target_desc.Width, target_desc.Height,
+        source, 0, 0, source_desc.Width, source_desc.Height,
+        flip);
 }
