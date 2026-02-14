@@ -371,19 +371,17 @@ bool AmbientLight::RenderEffects()
         srcBar.parentWidth = m_gameWidth;
         srcBar.parentHeight = m_gameHeight;
 
-        if (m_settings.stretched)
+
+        switch (srcBar.position)
         {
-            switch (srcBar.position)
-            {
-                case BlackBarPosition::Top:
-                case BlackBarPosition::Bottom:
-                    srcBar.height = (UINT)((float)srcBar.height * 0.5);
-                    break;
-                case BlackBarPosition::Left:
-                case BlackBarPosition::Right:
-                    srcBar.width = (UINT)((float)srcBar.width * 0.5);
-                    break;
-            }
+            case BlackBarPosition::Top:
+            case BlackBarPosition::Bottom:
+                srcBar.height = (UINT)((float)srcBar.height / m_settings.stretchFactor);
+                break;
+            case BlackBarPosition::Left:
+            case BlackBarPosition::Right:
+                srcBar.width = (UINT)((float)srcBar.width / m_settings.stretchFactor);
+                break;
         }
 
         D3D11_BOX src = srcBar.GetBox();

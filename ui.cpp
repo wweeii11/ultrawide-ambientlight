@@ -312,16 +312,16 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
             SaveSettings(settings);
         }
 
-        if (ImGui::DragInt("Zoom", (int*)&settings.zoom, 1, 1, 16))
+        if (ImGui::DragInt("Zoom", (int*)&settings.zoom, 1, 0, 16))
         {
             settings.zoom = std::clamp(settings.zoom, 0u, 16u);
             SaveSettings(settings);
         }
 
-        if (ImGui::Checkbox("Mirrored", &settings.mirrored))
+        if (ImGui::DragFloat("Stretch", &settings.stretchFactor, 0.01f, 0.1f, 5.0f))
             SaveSettings(settings);
 
-        if (ImGui::Checkbox("Stretched", &settings.stretched))
+        if (ImGui::Checkbox("Mirrored", &settings.mirrored))
             SaveSettings(settings);
     }
 

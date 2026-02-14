@@ -177,6 +177,13 @@ bool ReadSettings(AppSettings& settings)
     bool stretched = DEFAULT_STRETCHED;
     inipp::get_value(ini.sections["Game"], "Stretched", stretched);
 
+    float stretchFactor = DEFAULT_STRETCHED;
+    if (!inipp::get_value(ini.sections["Game"], "StretchFactor", stretchFactor))
+    {
+        // for backward compatibility, if StretchFactor is missing, set it to 2.0f when Stretched is true, otherwise 1.0f
+        stretchFactor = stretched ? 2.0f : 1.0f;
+    }
+
     int zoom = DEFAULT_ZOOM;
     inipp::get_value(ini.sections["Game"], "Zoom", zoom);
 
@@ -229,6 +236,7 @@ bool ReadSettings(AppSettings& settings)
     settings.frameRate = frameRate;
     settings.mirrored = mirrored;
     settings.stretched = stretched;
+    settings.stretchFactor = stretchFactor;
     settings.zoom = zoom;
     settings.vignetteEnabled = vignetteEnabled;
     settings.vignetteIntensity = vignetteIntensity;
@@ -321,7 +329,8 @@ void SaveSettings(AppSettings& settings)
     ini.sections["Game"]["BlurSamples"] = std::to_string(settings.blurSamples);
     ini.sections["Game"]["FrameRate"] = std::to_string(settings.frameRate);
     ini.sections["Game"]["Mirrored"] = settings.mirrored ? "true" : "false";
-    ini.sections["Game"]["Stretched"] = settings.stretched ? "true" : "false";
+    //ini.sections["Game"]["Stretched"] = settings.stretched ? "true" : "false";
+    ini.sections["Game"]["StretchFactor"] = std::to_string(settings.stretchFactor);
     ini.sections["Game"]["Zoom"] = std::to_string(settings.zoom);
     ini.sections["Game"]["VignetteEnabled"] = settings.vignetteEnabled ? "true" : "false";
     ini.sections["Game"]["VignetteIntensity"] = std::to_string(settings.vignetteIntensity);
