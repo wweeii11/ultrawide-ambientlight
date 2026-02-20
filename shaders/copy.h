@@ -18,6 +18,9 @@ public:
     ~Copy();
     HRESULT Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context);
     HRESULT Render(ID3D11DeviceContext* context, TextureView target, TextureView source, Flip flip = FlipNone);
+    HRESULT Render(ID3D11DeviceContext* context, TextureView target, UINT targetOffsetX, UINT targetOffsetY, UINT targetWidth, UINT targetHeight,
+                                                 TextureView source, UINT sourceOffsetX, UINT sourceOffsetY, UINT sourceWidth, UINT sourceHeight, 
+                                                 Flip flip = FlipNone);
 private:
     ComPtr<ID3D11Device> m_device;
     ComPtr<ID3D11DeviceContext> m_context;

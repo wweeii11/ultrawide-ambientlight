@@ -116,7 +116,7 @@ void AmbientLight::ValidateSettings()
 {
     if (m_settings.loaded && m_settings.useAutoDetection)
     {
-        m_blackBars = m_detection.GetDetectedBoxes();
+        m_blackBars = m_detection.GetDetectedBars();
     }
     else
     {
@@ -137,7 +137,7 @@ void AmbientLight::ValidateSettings()
             height = 9;
         }
 
-        m_blackBars = m_detection.GetFixedBoxes(width, height);
+        m_blackBars = m_detection.GetFixedBars(width, height);
     }
 
 
@@ -146,10 +146,11 @@ void AmbientLight::ValidateSettings()
     m_gameHeight = m_windowHeight;
     if (m_blackBars.size() == 2)
     {
-        if (m_windowWidth > RECT_WIDTH(m_blackBars[0]))
-            m_gameWidth = m_windowWidth - RECT_WIDTH(m_blackBars[0]) - RECT_WIDTH(m_blackBars[1]);
-        if (m_windowHeight > RECT_HEIGHT(m_blackBars[0]))
-            m_gameHeight = m_windowHeight - RECT_HEIGHT(m_blackBars[0]) - RECT_HEIGHT(m_blackBars[1]);
+        if (m_windowWidth > m_blackBars[0].width)
+            m_gameWidth = m_windowWidth - m_blackBars[0].width - m_blackBars[1].width;
+
+        if (m_windowHeight > m_blackBars[0].height)
+            m_gameHeight = m_windowHeight - m_blackBars[0].height - m_blackBars[1].height;
     }
 
     // Validate blur settings
@@ -265,15 +266,14 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
         downscale,
         downscale);
 
-    UINT width2 = m_settings.stretched ? m_windowWidth : m_gameWidth;
-    UINT height2 = m_settings.stretched ? m_windowHeight : m_gameHeight;
     m_offscreen2.RecreateTexture(m_device.Get(), format,
-        width2 + m_effectZoom * 2,
-        height2 + m_effectZoom * 2);
+        m_gameWidth + m_effectZoom * 2,
+        m_gameHeight + m_effectZoom * 2);
 
     m_offscreen3.RecreateTexture(m_device.Get(), format,
         m_windowWidth,
         m_windowHeight);
+
     return hr;
 }
 
@@ -326,8 +326,8 @@ bool AmbientLight::RenderEffects()
     if (m_gameHeight == m_windowHeight)
     {
         // black bars on left/right
-        game_box.left = RECT_WIDTH(m_blackBars[0]);
-        game_box.right = m_windowWidth - RECT_WIDTH(m_blackBars[1]);
+        game_box.left = m_blackBars[0].width;
+        game_box.right = m_windowWidth - m_blackBars[1].width;
         game_box.top = 0;
         game_box.bottom = m_windowHeight;
     }
@@ -336,8 +336,8 @@ bool AmbientLight::RenderEffects()
         // black bars on top/bottom
         game_box.left = 0;
         game_box.right = m_windowWidth;
-        game_box.top = RECT_HEIGHT(m_blackBars[0]);
-        game_box.bottom = m_windowHeight - RECT_HEIGHT(m_blackBars[1]);
+        game_box.top = m_blackBars[0].height;
+        game_box.bottom = m_windowHeight - m_blackBars[1].height;
     }
     else
     {
@@ -355,12 +355,7 @@ bool AmbientLight::RenderEffects()
 
     m_blurDownscale.Render(m_deferred.Get(), m_offscreen1, m_settings.blurPasses);
 
-    Copy::Flip flip = Copy::FlipNone;
-    if (m_settings.mirrored)
-    {
-        flip = (m_gameWidth == m_windowWidth) ? Copy::FlipVertical : Copy::FlipHorizontal;
-    }
-    m_copy.Render(m_deferred.Get(), m_offscreen2, m_offscreen1, flip);
+    m_copy.Render(m_deferred.Get(), m_offscreen2, m_offscreen1);
 
     ID3D11RenderTargetView* rtv = m_offscreen3.GetRTV();
     float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -372,75 +367,39 @@ bool AmbientLight::RenderEffects()
 
     for (int i = 0; i < 2; i++)
     {
-        D3D11_BOX src = m_settings.mirrored ? GetMirroredBox(m_blackBars[i], m_windowWidth, m_windowHeight) : m_blackBars[i];
-        D3D11_BOX dst = m_blackBars[i];
+        BlackBar srcBar = m_blackBars[i];
+        srcBar.parentWidth = m_gameWidth;
+        srcBar.parentHeight = m_gameHeight;
 
-        if (!m_settings.stretched)
+
+        switch (srcBar.position)
         {
-            // adjust src box from windows size to game size
-            if (m_gameHeight == m_windowHeight)
-            {
-                if (m_gameWidth > RECT_WIDTH(src))
-                {
-                    if (src.left > m_windowWidth / 2)
-                    {
-                        src.left -= (m_windowWidth - m_gameWidth);
-                        src.right -= (m_windowWidth - m_gameWidth);
-                    }
-                }
-                else
-                {
-                    // if game width is smaller than black bar width, clamp to game width
-                    if (src.left > m_windowWidth / 2)
-                    {
-                        src.left = m_gameWidth / 2;
-                        src.right = m_gameWidth;
-                    }
-                    else
-                    {
-                        src.left = 0;
-                        src.right = m_gameWidth / 2;
-                    }
-                }
-            }
-            else if (m_gameWidth == m_windowWidth)
-            {
-                if (m_gameHeight > RECT_HEIGHT(src))
-                {
-                    if (src.top > m_windowHeight / 2)
-                    {
-                        src.top -= (m_windowHeight - m_gameHeight);
-                        src.bottom -= (m_windowHeight - m_gameHeight);
-                    }
-                }
-                else
-                {
-                    if (src.top > m_windowHeight / 2)
-                    {
-                        src.top = m_gameHeight / 2;
-                        src.bottom = m_gameHeight;
-                    }
-                    else
-                    {
-                        src.top = 0;
-                        src.bottom = m_gameHeight / 2;
-                    }
-                }
-            }
+            case BlackBarPosition::Top:
+            case BlackBarPosition::Bottom:
+                srcBar.height = (UINT)((float)srcBar.height / m_settings.stretchFactor);
+                break;
+            case BlackBarPosition::Left:
+            case BlackBarPosition::Right:
+                srcBar.width = (UINT)((float)srcBar.width / m_settings.stretchFactor);
+                break;
         }
 
+        D3D11_BOX src = srcBar.GetBox();
         src.left += m_effectZoom;
         src.right += m_effectZoom;
         src.top += m_effectZoom;
         src.bottom += m_effectZoom;
-        if (IS_BOX_EMPTY(src) || IS_BOX_EMPTY(dst))
-            continue;
 
-        m_deferred->CopySubresourceRegion(
-            m_offscreen3.GetTexture(), 0,
-            dst.left, dst.top, 0,
-            m_offscreen2.GetTexture(), 0,
-            &src);
+        D3D11_BOX dst = m_blackBars[i].GetBox();
+
+        Copy::Flip flip = Copy::FlipNone;
+        if (m_settings.mirrored)
+        {
+            flip = (m_gameWidth == m_windowWidth) ? Copy::FlipVertical : Copy::FlipHorizontal;
+        }
+
+        m_copy.Render(m_deferred.Get(), m_offscreen3, dst.left, dst.top, RECT_WIDTH(dst), RECT_HEIGHT(dst),
+            m_offscreen2, src.left, src.top, RECT_WIDTH(src), RECT_HEIGHT(src), flip);
     }
 
     m_effectRendered = true;
@@ -546,8 +505,9 @@ void AmbientLight::Present()
         {
             memset(m_dirtyRects, 0, sizeof(m_dirtyRects));
             int numRects = 0;
-            for (auto& box : m_blackBars)
+            for (auto& bar : m_blackBars)
             {
+                D3D11_BOX box = bar.GetBox();
                 if (IS_BOX_EMPTY(box))
                     continue;
                 m_dirtyRects[numRects].left = box.left;
@@ -603,17 +563,14 @@ void AmbientLight::Detect()
             desktopTextureView.CreateViews(m_device.Get(), desktopTexture.Get(), false, true, false);
             m_detection.Detect(m_immediate.Get(), desktopTextureView);
 
-            std::vector<D3D11_BOX> detected = m_detection.GetDetectedBoxes();
+            std::vector<BlackBar> detected = m_detection.GetDetectedBars();
 
             bool updateSettings = false;
             if (detected.size() == m_blackBars.size())
             {
                 for (int i = 0; i < detected.size(); i++)
                 {
-                    if (detected[i].left != m_blackBars[i].left ||
-                        detected[i].top != m_blackBars[i].top ||
-                        detected[i].right != m_blackBars[i].right ||
-                        detected[i].bottom != m_blackBars[i].bottom)
+                    if (detected[i] != m_blackBars[i])
                     {
                         updateSettings = true;
                         break;

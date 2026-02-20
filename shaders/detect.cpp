@@ -318,9 +318,9 @@ HRESULT Detection::RenderMask(ID3D11DeviceContext* context, TextureView target)
     return hr;
 }
 
-std::vector<D3D11_BOX> Detection::GetFixedBoxes(UINT gameWidth, UINT gameHeight)
+std::vector<BlackBar> Detection::GetFixedBars(UINT gameWidth, UINT gameHeight)
 {
-    std::vector<D3D11_BOX> ret;
+    std::vector<BlackBar> ret;
 
     float aspect = (float)gameWidth / (float)gameHeight;
     float windowAspect = (float)m_width / (float)m_height;
@@ -338,44 +338,44 @@ std::vector<D3D11_BOX> Detection::GetFixedBoxes(UINT gameWidth, UINT gameHeight)
     {
         UINT barHeight = (m_height - gameHeight) / 2;
         // letterbox
-        D3D11_BOX box = {};
-        box.front = 0;
-        box.back = 1;
+        BlackBar topBar = {};
+        topBar.parentWidth = m_width;
+        topBar.parentHeight = m_height;
+        topBar.width = m_width;
+        topBar.height = barHeight;
+        topBar.position = Top;
 
-        box.left = 0;
-        box.top = 0;
-        box.right = m_width;
-        box.bottom = barHeight;
+        BlackBar bottomBar = topBar;
+        bottomBar.position = Bottom;
 
-        ret.push_back(box);
-        box.top = m_height - barHeight;
-        box.bottom = m_height;
-        ret.push_back(box);
+        ret.push_back(topBar);
+        ret.push_back(bottomBar);
+
     }
     else
     {
         UINT barWidth = (m_width - gameWidth) / 2;
         // pillarbox
-        D3D11_BOX box = {};
-        box.front = 0;
-        box.back = 1;
+        BlackBar leftBar = {};
+        leftBar.parentWidth = m_width;
+        leftBar.parentHeight = m_height;
+        leftBar.width = barWidth;
+        leftBar.height = m_height;
+        leftBar.position = Left;
 
-        box.left = 0;
-        box.top = 0;
-        box.right = barWidth;
-        box.bottom = m_height;
-        ret.push_back(box);
-        box.left = m_width - barWidth;
-        box.right = m_width;
-        ret.push_back(box);
+        BlackBar rightBar = leftBar;
+        rightBar.position = Right;
+
+        ret.push_back(leftBar);
+        ret.push_back(rightBar);
     }
 
     return ret;
 }
 
-std::vector<D3D11_BOX> Detection::GetDetectedBoxes()
+std::vector<BlackBar> Detection::GetDetectedBars()
 {
-    std::vector<D3D11_BOX> ret;
+    std::vector<BlackBar> ret;
     if (m_detectWidth == m_width && m_detectHeight == m_height)
     {
         // no bars detected
@@ -384,34 +384,36 @@ std::vector<D3D11_BOX> Detection::GetDetectedBoxes()
     else if (m_detectHeight == m_height)
     {
         // pillarbox
-        D3D11_BOX box = {};
-        box.front = 0;
-        box.back = 1;
+        BlackBar leftBar = {};
+        leftBar.parentWidth = m_width;
+        leftBar.parentHeight = m_height;
+        leftBar.width = m_leftBar;
+        leftBar.height = m_height;
+        leftBar.position = Left;
 
-        box.left = 0;
-        box.top = 0;
-        box.right = m_leftBar;
-        box.bottom = m_height;
-        ret.push_back(box);
-        box.left = m_width - m_rightBar;
-        box.right = m_width;
-        ret.push_back(box);
+        BlackBar rightBar = leftBar;
+        rightBar.width = m_rightBar;
+        rightBar.position = Right;
+
+        ret.push_back(leftBar);
+        ret.push_back(rightBar);
     }
     else if (m_detectWidth == m_width)
     {
         // letterbox
-        D3D11_BOX box = {};
-        box.front = 0;
-        box.back = 1;
+        BlackBar topBar = {};
+        topBar.parentWidth = m_width;
+        topBar.parentHeight = m_height;
+        topBar.width = m_width;
+        topBar.height = m_topBar;
+        topBar.position = Top;
 
-        box.left = 0;
-        box.top = 0;
-        box.right = m_width;
-        box.bottom = m_topBar;
-        ret.push_back(box);
-        box.top = m_height - m_bottomBar;
-        box.bottom = m_height;
-        ret.push_back(box);
+        BlackBar bottomBar = topBar;
+        bottomBar.height = m_bottomBar;
+        bottomBar.position = Bottom;
+
+        ret.push_back(topBar);
+        ret.push_back(bottomBar);
     }
 
     return ret;
