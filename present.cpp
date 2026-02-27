@@ -22,6 +22,9 @@ void PresentWindow::FindAndShow()
             {
                 ShowWindow(hwnd, SW_SHOWNORMAL);
                 SetForegroundWindow(hwnd);
+                
+                SendMessage(hwnd, WM_TOGGLE_CONFIG_WINDOW, 1, 0);
+                
                 return FALSE; // stop enumeration
             }
             return TRUE; // continue enumeration

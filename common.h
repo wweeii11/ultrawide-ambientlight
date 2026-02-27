@@ -18,6 +18,7 @@ using namespace Microsoft::WRL;
 // lparam: 0 - use wparam as show/hide, 1 - toggle
 // wparam: 0 - hide, 1 - show
 #define WM_TOGGLE_CONFIG_WINDOW (WM_USER + 2)
+#define WM_WINDOW_ACTIVATED (WM_USER + 3)
 
 #define RETURN_IF_FAILED(hr) if (FAILED(hr)) return hr;
 

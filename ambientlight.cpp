@@ -66,6 +66,15 @@ LRESULT AmbientLight::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
             SetForegroundWindow(hwnd);
         return 0;
     }
+    case WM_WINDOW_ACTIVATED:
+    {
+        if (m_settings.popupConfigOnFocus && !m_showConfigWindow)
+        {
+            ShowConfigWindow(true);
+            SetForegroundWindow(hwnd);
+        }
+        return 0;
+    }
     }
 
     return UiWndProc(hwnd, message, wParam, lParam);

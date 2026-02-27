@@ -61,7 +61,7 @@ LRESULT UiWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         }
         else
         {
-            PostMessage(hwnd, WM_TOGGLE_CONFIG_WINDOW, 1, 0);
+            PostMessage(hwnd, WM_WINDOW_ACTIVATED, 0, 0);
         }
     }
     break;
@@ -331,6 +331,12 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
         {
             SaveSettings(settings);
         }
+        if (ImGui::Checkbox("Auto open settings", &settings.popupConfigOnFocus))
+        {
+            SaveSettings(settings);
+        }
+        ImGui::SameLine(); HelpMarker("Automatically open the settings window\n"
+            "when the application is focused.");
     }
 
     ImGui::Separator();

@@ -229,6 +229,9 @@ bool ReadSettings(AppSettings& settings)
     bool showInTaskbar = DEFAULT_SHOW_IN_TASKBAR;
     inipp::get_value(ini.sections["UI"], "ShowInTaskbar", showInTaskbar);
 
+    bool popupConfigOnFocus = DEFAULT_POPUP_CONFIG_ON_FOCUS;
+    inipp::get_value(ini.sections["UI"], "PopupConfigOnFocus", popupConfigOnFocus);
+
     settings.loaded = true;
     settings.blurPasses = blur;
     settings.blurDownscale = blurSize;
@@ -248,11 +251,12 @@ bool ReadSettings(AppSettings& settings)
     settings.autoDetectionBlackRatio = autoDetectionBlackRatio;
     settings.autoDetectionLightMask = autoDetectionLightMask;
     settings.showInTaskbar = showInTaskbar;
+    settings.popupConfigOnFocus = popupConfigOnFocus;
     settings.autoDetectionSymmetricBars = autoDetectionSymmetricBars;
     settings.autoDetectionReservedArea = autoDetectionReservedArea;
     settings.autoDetectionReservedWidth = autoDetectionReservedWidth;
     settings.autoDetectionReservedHeight = autoDetectionReservedHeight;
-
+    
     std::string currentRes = "";
     inipp::get_value(ini.sections["Game"], "Resolution", currentRes);
 
@@ -346,6 +350,7 @@ void SaveSettings(AppSettings& settings)
     ini.sections["Game"]["AutoDetectionReservedWidth"] = std::to_string(settings.autoDetectionReservedWidth);
     ini.sections["Game"]["AutoDetectionReservedHeight"] = std::to_string(settings.autoDetectionReservedHeight);
     ini.sections["UI"]["ShowInTaskbar"] = settings.showInTaskbar ? "true" : "false";
+    ini.sections["UI"]["PopupConfigOnFocus"] = settings.popupConfigOnFocus ? "true" : "false";
 
 
     for (auto& res : settings.resolutions.available)
