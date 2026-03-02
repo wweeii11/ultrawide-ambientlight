@@ -368,6 +368,15 @@ void UpdateUI(HWND hwnd, AppSettings& settings)
         exStyle &= ~WS_EX_APPWINDOW;
     }
 
+    if (settings.popupConfigOnFocus)
+    {
+        exStyle |= WS_EX_NOACTIVATE; 
+    }
+    else
+    {
+        exStyle &= ~WS_EX_NOACTIVATE;
+    }
+
     SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
 }
 
