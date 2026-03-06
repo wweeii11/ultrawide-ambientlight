@@ -206,8 +206,13 @@ private:
     ComPtr<ID3D11UnorderedAccessView> m_uav;
 };
 
+__declspec(align(16))
 class PerfTimer {
 public:
+    PerfTimer() : m_name("Unnamed"), m_maxRecords(10) {
+        QueryPerformanceFrequency(&m_frequency);
+    }
+
     PerfTimer(std::string name, size_t maxRecords = 10)
         : m_name(name), m_maxRecords(maxRecords) {
         QueryPerformanceFrequency(&m_frequency);

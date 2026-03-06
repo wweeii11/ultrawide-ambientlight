@@ -9,6 +9,7 @@
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
 
+__declspec(align(16))
 struct VS_BLOOM_PARAMETERS
 {
     float bloomThreshold;
