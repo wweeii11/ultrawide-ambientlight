@@ -186,6 +186,10 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
                         "Increase this to avoid false positives (requires more of the area to be dark),\n"
                         "or decrease to detect thinner/partial bars.");
                 }
+                if (ImGui::DragInt("Detection Interval", (int*)&settings.autoDetectionTime, 0.1f, 1, 3000, "%d ms"))
+                {
+                    SaveSettings(settings);
+                }
 
                 if (ImGui::Checkbox("Symmetric", &settings.autoDetectionSymmetricBars))
                 {

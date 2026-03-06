@@ -61,6 +61,12 @@ private:
     INT64 m_lastPresentTime;
     INT64 m_perfFreq;
 
+    PerfTimer m_framePerfTimer = { "frame" };
+    PerfTimer m_renderPerfTimer = { "render" };
+    PerfTimer m_detectPerfTimer = { "detect" };
+    PerfTimer m_sleepPerfTimer = { "sleep" };
+    PerfTimer m_capturePerfTimer = { "capture" };
+
     TextureView m_gameTexture;
     TextureView m_offscreen1;
     TextureView m_offscreen2;
