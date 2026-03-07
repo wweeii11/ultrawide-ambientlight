@@ -117,12 +117,18 @@ void AmbientLight::UpdateSettings()
             m_settings.autoDetectionReservedArea ? m_settings.autoDetectionReservedWidth : 0,
             m_settings.autoDetectionReservedArea ? m_settings.autoDetectionReservedHeight : 0);
 
-        UpdateUI(m_hwnd, m_settings);
+
+        InitUI(m_hwnd, m_device.Get(), m_deferred.Get(), m_settings);
     }
 }
 
 void AmbientLight::ValidateSettings()
 {
+    if (!m_settings.loaded)
+    {
+        ReadSettings(m_settings);
+    }
+
     if (m_settings.loaded && m_settings.useAutoDetection)
     {
         m_blackBars = m_detection.GetDetectedBars();
@@ -255,8 +261,6 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
     m_offscreen1.Clear();
     m_offscreen2.Clear();
     m_offscreen3.Clear();
-
-    InitUI(hwnd, m_device.Get(), m_deferred.Get());
 
     UpdateSettings();
 

@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <string>
+#include <filesystem>
 
 #include "windows.h"
 
@@ -28,6 +29,7 @@
 #define DEFAULT_AUTO_DETECTION_RESERVED_HEIGHT 9
 #define DEFAULT_SHOW_IN_TASKBAR     true
 #define DEFAULT_POPUP_CONFIG_ON_FOCUS     true
+#define DEFAULT_UI_SCALE               1.0f
 
 struct ResolutionSettings
 {
@@ -71,8 +73,11 @@ struct AppSettings
     UINT autoDetectionReservedHeight = DEFAULT_AUTO_DETECTION_RESERVED_HEIGHT;
     bool showInTaskbar = DEFAULT_SHOW_IN_TASKBAR;
     bool popupConfigOnFocus = true;
+    float uiScale = DEFAULT_UI_SCALE;
 };
 
 
 bool ReadSettings(AppSettings& settings);
 void SaveSettings(AppSettings& settings);
+
+std::filesystem::path GetDataFile(std::wstring fileName);

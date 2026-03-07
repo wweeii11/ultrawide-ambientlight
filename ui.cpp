@@ -7,6 +7,9 @@
 #include <algorithm>
 #include "windows.h"
 
+const std::wstring IMGUI_FILE_NAME = L"ui.ini";
+std::string imguiFilePath = "";
+
 // Helper to display a little (?) mark which shows a tooltip when hovered.
 // In your own code you may want to display an actual icon if you are using a merged icon fonts (see docs/FONTS.md)
 static void HelpMarker(const char* desc)
@@ -82,17 +85,27 @@ LRESULT UiWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     return ImGui_ImplWin32_WndProcHandler(hwnd, message, wParam, lParam);
 }
 
-void InitUI(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context)
+void InitUI(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context, AppSettings& settings)
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
 
+    if (imguiFilePath.empty())
+    {
+        imguiFilePath = GetDataFile(IMGUI_FILE_NAME).string();
+    }
+
+    io.IniFilename = imguiFilePath.c_str();
+
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
     // load Segoe UI font
-    ImFont* arial_font = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 20.0f);
+    float fontSize = 20.0f * settings.uiScale;
+    io.Fonts->Clear();
+
+    ImFont* arial_font = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", fontSize);
     io.Fonts->Build();
 
     // Setup Dear ImGui style
@@ -115,6 +128,8 @@ void InitUI(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context
         PostMessage(hwnd, WM_TOGGLE_CONFIG_WINDOW, 1, 0);
     }
     firstInit = false;
+
+    UpdateWindowFlags(hwnd, settings);
 }
 
 bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
@@ -341,6 +356,10 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
         }
         ImGui::SameLine(); HelpMarker("Automatically open the settings window\n"
             "when the application is focused.");
+        if (ImGui::DragFloat("UI Scale", &settings.uiScale, 0.1f, 0.5f, 3.0f))
+        {
+            SaveSettings(settings);
+        }
     }
 
     ImGui::Separator();
@@ -358,7 +377,7 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
     return open;
 }
 
-void UpdateUI(HWND hwnd, AppSettings& settings)
+void UpdateWindowFlags(HWND hwnd, AppSettings& settings)
 {
     LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
     if (settings.showInTaskbar)

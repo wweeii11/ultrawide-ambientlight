@@ -2,14 +2,15 @@
 #include "inipp.h"
 #include <fstream>
 #include <shlobj.h>
-#include <filesystem>
 
 const std::wstring TEST_FILE = L"test.temp";
-const std::wstring CONFIG_FILE_DEFAULT = L"config.ini";
+const std::wstring CONFIG_FILE_NAME = L"config.ini";
 const std::wstring APP_SUBFOLDER = L"ultrawide-ambientlight";
 
 ULONGLONG lastCheckTime = 0;
 FILETIME lastWriteTime = {};
+
+std::wstring configFilePath = L"";
 
 #define UPDATE_INTERVAL 250
 
@@ -76,21 +77,12 @@ fs::path GetDataFile(std::wstring fileName)
 
 std::wstring GetCurrentConfigFilePath()
 {
-    fs::path defaultPath = fs::current_path() / CONFIG_FILE_DEFAULT;
-    fs::path appDataConfig = GetDataFile(CONFIG_FILE_DEFAULT);
-
-    // Copy default config if it doesn't exist in AppData yet
-    if (!fs::exists(appDataConfig) && fs::exists(defaultPath)) {
-        try {
-            fs::copy_file(defaultPath, appDataConfig, fs::copy_options::overwrite_existing);
-        }
-        catch (const fs::filesystem_error& e) {
-            // Handle copy error (e.g., source file missing)
-            (e);
-        }
+    if (configFilePath.empty())
+    {
+        configFilePath = GetDataFile(CONFIG_FILE_NAME).wstring();
     }
 
-    return appDataConfig.wstring();
+    return configFilePath;
 }
 
 FILETIME GetFileLastWriteTime(LPCWSTR filePath)
@@ -232,6 +224,9 @@ bool ReadSettings(AppSettings& settings)
     bool popupConfigOnFocus = DEFAULT_POPUP_CONFIG_ON_FOCUS;
     inipp::get_value(ini.sections["UI"], "PopupConfigOnFocus", popupConfigOnFocus);
 
+    float uiScale = DEFAULT_UI_SCALE;
+    inipp::get_value(ini.sections["UI"], "UIScale", uiScale);
+
     settings.loaded = true;
     settings.blurPasses = blur;
     settings.blurDownscale = blurSize;
@@ -256,6 +251,7 @@ bool ReadSettings(AppSettings& settings)
     settings.autoDetectionReservedArea = autoDetectionReservedArea;
     settings.autoDetectionReservedWidth = autoDetectionReservedWidth;
     settings.autoDetectionReservedHeight = autoDetectionReservedHeight;
+    settings.uiScale = uiScale;
     
     std::string currentRes = "";
     inipp::get_value(ini.sections["Game"], "Resolution", currentRes);
@@ -351,6 +347,7 @@ void SaveSettings(AppSettings& settings)
     ini.sections["Game"]["AutoDetectionReservedHeight"] = std::to_string(settings.autoDetectionReservedHeight);
     ini.sections["UI"]["ShowInTaskbar"] = settings.showInTaskbar ? "true" : "false";
     ini.sections["UI"]["PopupConfigOnFocus"] = settings.popupConfigOnFocus ? "true" : "false";
+    ini.sections["UI"]["UIScale"] = std::to_string(settings.uiScale);
 
 
     for (auto& res : settings.resolutions.available)
