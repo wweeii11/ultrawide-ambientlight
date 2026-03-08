@@ -177,7 +177,11 @@ public:
             desc.CPUAccessFlags = 0;
             desc.MiscFlags = 0;
             hr = device->CreateTexture2D(&desc, nullptr, &texture);
-            CreateViews(device, texture);
+            if (SUCCEEDED(hr))
+            {
+                CreateViews(device, texture);
+                texture->Release();
+            }
         }
         return hr;
     }

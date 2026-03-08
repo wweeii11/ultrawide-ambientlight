@@ -295,10 +295,12 @@ void AmbientLight::Render()
     if (nullptr == m_device)
         return;
 
+#ifdef _DEBUG
     static ULONGLONG lastLogTime = 0;
     ULONGLONG currentTime = GetTickCount64();
     if (1000 < (currentTime - lastLogTime))
     {
+
         OutputDebugStringA("=== Performance (ms):\n");
         m_framePerfTimer.PrintToDebug();
         m_capturePerfTimer.PrintToDebug();
@@ -306,8 +308,16 @@ void AmbientLight::Render()
         m_detectPerfTimer.PrintToDebug();
         m_sleepPerfTimer.PrintToDebug();
         lastLogTime = currentTime;
-    }
 
+        UINT ref = m_device->AddRef();
+        ref = m_device->Release();
+
+        char buffer[64];
+        sprintf_s(buffer, "=== Device ref %u\n", ref);
+        OutputDebugStringA(buffer);
+    }
+#endif
+    
     ScopedPerfTimer frameTimer(m_framePerfTimer);
 
     {
@@ -333,6 +343,7 @@ void AmbientLight::Render()
         RenderConfig();
         RenderBackBuffer();
     }
+
     Present();
 
     {
