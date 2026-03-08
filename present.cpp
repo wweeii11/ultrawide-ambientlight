@@ -22,6 +22,9 @@ void PresentWindow::FindAndShow()
             {
                 ShowWindow(hwnd, SW_SHOWNORMAL);
                 SetForegroundWindow(hwnd);
+                
+                SendMessage(hwnd, WM_TOGGLE_CONFIG_WINDOW, 1, 0);
+                
                 return FALSE; // stop enumeration
             }
             return TRUE; // continue enumeration
@@ -30,6 +33,8 @@ void PresentWindow::FindAndShow()
 
 void PresentWindow::Create(HINSTANCE hInstance, AmbientLight* render)
 {
+    m_render = render;
+
     SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
 
     // Create a window class
@@ -98,6 +103,8 @@ void PresentWindow::Run()
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
+        if (m_render)
+            m_render->Render();
     }
 }
 
@@ -130,15 +137,6 @@ LRESULT CALLBACK PresentWindow::WndProc(HWND hwnd, UINT message, WPARAM wParam, 
         GetWindowRect(GetDesktopWindow(), &desktopRect);
         SetWindowPos(hwnd, nullptr, 0, 0, desktopRect.right, desktopRect.bottom, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
         pRender->Initialize(hwnd);
-    }
-    return 0;
-
-    case WM_PAINT:
-    {
-        if (pRender)
-        {
-            pRender->Render();
-        }
     }
     return 0;
 

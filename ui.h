@@ -5,6 +5,6 @@
 #include "imgui/backends/imgui_impl_dx11.h"
 
 LRESULT UiWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
-void InitUI(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context);
+void InitUI(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context, AppSettings& settings);
 bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight);
-void UpdateUI(HWND hwnd, AppSettings& settings);
+void UpdateWindowFlags(HWND hwnd, AppSettings& settings);

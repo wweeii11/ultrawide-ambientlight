@@ -31,6 +31,7 @@ PS_INPUT VS(VS_INPUT input)
 
 )";
 
+__declspec(align(16))
 struct Vertex
 {
     XMFLOAT3 position;

@@ -85,7 +85,11 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
             &lumaTex,
             &m_lumaStaging);
 
-        m_luma.CreateViews(m_device.Get(), lumaTex, false, true, true);
+        if (lumaTex)
+        {
+            m_luma.CreateViews(m_device.Get(), lumaTex, false, true, true);
+            lumaTex->Release();
+        }
     }
 
     m_width = width;

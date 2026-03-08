@@ -66,6 +66,15 @@ LRESULT AmbientLight::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
             SetForegroundWindow(hwnd);
         return 0;
     }
+    case WM_WINDOW_ACTIVATED:
+    {
+        if (m_settings.popupConfigOnFocus && !m_showConfigWindow)
+        {
+            ShowConfigWindow(true);
+            SetForegroundWindow(hwnd);
+        }
+        return 0;
+    }
     }
 
     return UiWndProc(hwnd, message, wParam, lParam);
@@ -108,12 +117,18 @@ void AmbientLight::UpdateSettings()
             m_settings.autoDetectionReservedArea ? m_settings.autoDetectionReservedWidth : 0,
             m_settings.autoDetectionReservedArea ? m_settings.autoDetectionReservedHeight : 0);
 
-        UpdateUI(m_hwnd, m_settings);
+
+        InitUI(m_hwnd, m_device.Get(), m_deferred.Get(), m_settings);
     }
 }
 
 void AmbientLight::ValidateSettings()
 {
+    if (!m_settings.loaded)
+    {
+        ReadSettings(m_settings);
+    }
+
     if (m_settings.loaded && m_settings.useAutoDetection)
     {
         m_blackBars = m_detection.GetDetectedBars();
@@ -209,7 +224,7 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
     scd.Width = m_windowWidth;
     scd.Height = m_windowHeight;
     scd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_UNORDERED_ACCESS;
+    scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scd.BufferCount = 2;
     scd.SampleDesc.Count = 1;
     scd.SampleDesc.Quality = 0;
@@ -247,8 +262,6 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
     m_offscreen2.Clear();
     m_offscreen3.Clear();
 
-    InitUI(hwnd, m_device.Get(), m_deferred.Get());
-
     UpdateSettings();
 
     return 0;
@@ -279,21 +292,64 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 
 void AmbientLight::Render()
 {
-    m_capture.ReleaseFrame();
+    if (nullptr == m_device)
+        return;
 
-    if (ShouldRenderEffect())
+#ifdef _DEBUG
+    static ULONGLONG lastLogTime = 0;
+    ULONGLONG currentTime = GetTickCount64();
+    if (1000 < (currentTime - lastLogTime))
     {
-        RenderEffects();
+
+        OutputDebugStringA("=== Performance (ms):\n");
+        m_framePerfTimer.PrintToDebug();
+        m_capturePerfTimer.PrintToDebug();
+        m_renderPerfTimer.PrintToDebug();
+        m_detectPerfTimer.PrintToDebug();
+        m_sleepPerfTimer.PrintToDebug();
+        lastLogTime = currentTime;
+
+        UINT ref = m_device->AddRef();
+        ref = m_device->Release();
+
+        char buffer[64];
+        sprintf_s(buffer, "=== Device ref %u\n", ref);
+        OutputDebugStringA(buffer);
     }
-    else
+#endif
+    
+    ScopedPerfTimer frameTimer(m_framePerfTimer);
+
     {
-        ClearEffects();
+        m_capture.ReleaseFrame();
+        if (ShouldRenderEffect())
+        {
+            ScopedPerfTimer captureTimer(m_capturePerfTimer);
+            m_capture.Capture();
+        }
     }
 
-    RenderConfig();
-    RenderBackBuffer();
+    {
+        ScopedPerfTimer renderTimer(m_renderPerfTimer);
+        if (ShouldRenderEffect())
+        {
+            RenderEffects();
+        }
+        else
+        {
+            ClearEffects();
+        }
+
+        RenderConfig();
+        RenderBackBuffer();
+    }
+
     Present();
-    Detect();
+
+    {
+        ScopedPerfTimer detectTimer(m_detectPerfTimer);
+        Detect();
+    }
 
     bool changed = ReadSettings(m_settings);
     if (changed)
@@ -307,7 +363,6 @@ bool AmbientLight::ShouldRenderEffect()
 
 bool AmbientLight::RenderEffects()
 {
-    m_capture.Capture();
     ComPtr<ID3D11Texture2D> desktopTexture = m_capture.GetDesktopTexture();
     if (!desktopTexture)
         return false;
@@ -374,14 +429,14 @@ bool AmbientLight::RenderEffects()
 
         switch (srcBar.position)
         {
-            case BlackBarPosition::Top:
-            case BlackBarPosition::Bottom:
-                srcBar.height = (UINT)((float)srcBar.height / m_settings.stretchFactor);
-                break;
-            case BlackBarPosition::Left:
-            case BlackBarPosition::Right:
-                srcBar.width = (UINT)((float)srcBar.width / m_settings.stretchFactor);
-                break;
+        case BlackBarPosition::Top:
+        case BlackBarPosition::Bottom:
+            srcBar.height = (UINT)((float)srcBar.height / m_settings.stretchFactor);
+            break;
+        case BlackBarPosition::Left:
+        case BlackBarPosition::Right:
+            srcBar.width = (UINT)((float)srcBar.width / m_settings.stretchFactor);
+            break;
         }
 
         D3D11_BOX src = srcBar.GetBox();
@@ -436,7 +491,7 @@ void AmbientLight::RenderBackBuffer()
     m_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), &backBuffer);
 
     TextureView backview;
-    backview.CreateViews(m_device.Get(), backBuffer.Get(), true, false);
+    backview.CreateViews(m_device.Get(), backBuffer.Get(), true, false, false);
 
     ID3D11RenderTargetView* rtv_back = backview.GetRTV();
     float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -469,30 +524,6 @@ void AmbientLight::RenderBackBuffer()
 
 void AmbientLight::Present()
 {
-    INT64 now = 0;
-    double elapsedMs = 0.0f;
-    double frameTime = 1000.0 / m_frameRate;
-
-    while (elapsedMs < (frameTime - 1.0))
-    {
-        QueryPerformanceCounter((LARGE_INTEGER*)&now);
-
-        if (m_lastPresentTime == 0)
-            break;
-
-        INT64 elapsed = now - m_lastPresentTime;
-        elapsedMs = (double)(elapsed * 1000 / m_perfFreq);
-
-        if (elapsedMs < (frameTime - 2.0))
-        {
-            Sleep(1);
-        }
-        else
-        {
-            Sleep(0);
-        }
-    }
-
     if (m_showConfigWindow || m_clearConfigWindow)
     {
         m_clearConfigWindow = false;
@@ -538,6 +569,38 @@ void AmbientLight::Present()
         else
         {
             m_presented = false;
+        }
+
+        if (m_presented)
+        {
+            m_dcompDevice->Commit();
+        }
+    }
+
+    INT64 now = 0;
+    double elapsedMs = 0.0;
+    double frameTime = 1000.0 / m_frameRate;
+
+    QueryPerformanceCounter((LARGE_INTEGER*)&now);
+    if (m_lastPresentTime != 0)
+    {
+        ScopedPerfTimer sleepTimer(m_sleepPerfTimer);
+        elapsedMs = (double)((now - m_lastPresentTime) * 1000) / m_perfFreq;
+
+        while (elapsedMs < frameTime)
+        {
+            double remaining = frameTime - elapsedMs;
+            if (remaining > 1.5)
+            {
+                Sleep(1);
+            }
+            else
+            {
+                Sleep(0);
+            }
+
+            QueryPerformanceCounter((LARGE_INTEGER*)&now);
+            elapsedMs = (double)((now - m_lastPresentTime) * 1000) / m_perfFreq;
         }
     }
 

@@ -7,17 +7,21 @@
 #include "wrl/client.h"
 #include "SimpleMath.h"
 #include <string>
+#include <vector>
+#include <deque>
+#include <numeric>
 
 #include "settings.h"
 
 using namespace Microsoft::WRL;
 
 // shell icon message
-#define WM_USER_SHELLICON (WM_USER + 1)
+#define WM_USER_SHELLICON       (WM_USER + 1)
 // win message to toggle UI
 // lparam: 0 - use wparam as show/hide, 1 - toggle
 // wparam: 0 - hide, 1 - show
 #define WM_TOGGLE_CONFIG_WINDOW (WM_USER + 2)
+#define WM_WINDOW_ACTIVATED     (WM_USER + 3)
 
 #define RETURN_IF_FAILED(hr) if (FAILED(hr)) return hr;
 
@@ -173,7 +177,11 @@ public:
             desc.CPUAccessFlags = 0;
             desc.MiscFlags = 0;
             hr = device->CreateTexture2D(&desc, nullptr, &texture);
-            CreateViews(device, texture);
+            if (SUCCEEDED(hr))
+            {
+                CreateViews(device, texture);
+                texture->Release();
+            }
         }
         return hr;
     }
@@ -200,4 +208,57 @@ private:
     ComPtr<ID3D11ShaderResourceView> m_srv;
     ComPtr<ID3D11RenderTargetView> m_rtv;
     ComPtr<ID3D11UnorderedAccessView> m_uav;
+};
+
+__declspec(align(16))
+class PerfTimer {
+public:
+    PerfTimer() : m_name("Unnamed"), m_maxRecords(10) {
+        QueryPerformanceFrequency(&m_frequency);
+    }
+
+    PerfTimer(std::string name, size_t maxRecords = 10)
+        : m_name(name), m_maxRecords(maxRecords) {
+        QueryPerformanceFrequency(&m_frequency);
+    }
+
+    void Start() { QueryPerformanceCounter(&m_startTime); }
+
+    void Stop() {
+        LARGE_INTEGER endTime;
+        QueryPerformanceCounter(&endTime);
+        double duration = (double)(endTime.QuadPart - m_startTime.QuadPart) * 1000.0 / m_frequency.QuadPart;
+
+        m_records.push_back(duration);
+        if (m_records.size() > m_maxRecords) m_records.pop_front();
+    }
+
+    // New: Sends the average and last record to DebugView
+    void PrintToDebug() const {
+        char buffer[256];
+        sprintf_s(buffer, "[%s] Avg: %.3fms | Last: %.3fms\n",
+            m_name.c_str(), GetAverage(), GetLast());
+
+        OutputDebugStringA(buffer);
+    }
+
+    double GetAverage() const {
+        if (m_records.empty()) return 0.0;
+        return std::accumulate(m_records.begin(), m_records.end(), 0.0) / m_records.size();
+    }
+
+    double GetLast() const { return m_records.empty() ? 0.0 : m_records.back(); }
+
+private:
+    std::string m_name;
+    LARGE_INTEGER m_frequency;
+    LARGE_INTEGER m_startTime;
+    std::deque<double> m_records;
+    size_t m_maxRecords;
+};
+
+struct ScopedPerfTimer {
+    PerfTimer& timer;
+    ScopedPerfTimer(PerfTimer& t) : timer(t) { timer.Start(); }
+    ~ScopedPerfTimer() { timer.Stop(); }
 };
