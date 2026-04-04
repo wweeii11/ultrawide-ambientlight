@@ -91,10 +91,13 @@ void AmbientLight::UpdateSettings()
             m_gameWidth,
             m_gameHeight,
             m_settings.blurSamples);
+
+        UINT mipWidth = max(1u, m_gameWidth >> m_settings.mipmapLevels);
+        UINT mipHeight = max(1u, m_gameHeight >> m_settings.mipmapLevels);
         m_blurDownscale.Initialize(m_device,
             m_deferred,
-            m_settings.blurDownscale,
-            m_settings.blurDownscale,
+            mipWidth,
+            mipHeight,
             m_settings.blurSamples);
 
         float windowAspect = (float)m_windowWidth / (float)m_windowHeight;
@@ -170,7 +173,7 @@ void AmbientLight::ValidateSettings()
 
     // Validate blur settings
     m_settings.blurPasses = std::clamp(m_settings.blurPasses, 0u, 128u);
-    m_settings.blurDownscale = std::clamp(m_settings.blurDownscale / 2 * 2, 16u, 1024u);
+    m_settings.mipmapLevels = std::clamp(m_settings.mipmapLevels, 0u, 12u);
     m_settings.blurSamples = std::clamp(m_settings.blurSamples / 2 * 2 + 1, 1u, 63u);
 
     // Validate vignette settings
@@ -270,14 +273,15 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 {
     HRESULT hr = S_OK;
-    m_gameTexture.RecreateTexture(m_device.Get(), format, m_gameWidth, m_gameHeight);
+    // Create with full mip chain (0) and enable mip generation support
+    m_gameTexture.RecreateTexture(m_device.Get(), format, m_gameWidth, m_gameHeight, 0, true);
 
-    float aspect = (float)m_gameWidth / (float)m_gameHeight;
-
-    UINT downscale = m_settings.blurDownscale;
+    // m_offscreen1 now matches the selected mip level size
+    UINT mipWidth = max(1u, m_gameWidth >> m_settings.mipmapLevels);
+    UINT mipHeight = max(1u, m_gameHeight >> m_settings.mipmapLevels);
     m_offscreen1.RecreateTexture(m_device.Get(), format,
-        downscale,
-        downscale);
+        mipWidth,
+        mipHeight);
 
     m_offscreen2.RecreateTexture(m_device.Get(), format,
         m_gameWidth + m_effectZoom * 2,
@@ -406,7 +410,11 @@ bool AmbientLight::RenderEffects()
 
     m_blurPre.Render(m_deferred.Get(), m_gameTexture, m_settings.blurPasses);
 
-    m_copy.Render(m_deferred.Get(), m_offscreen1, m_gameTexture);
+    // Generate mipmaps for the captured game area
+    m_deferred->GenerateMips(m_gameTexture.GetSRV());
+
+    // Extract the specific mip level to the secondary buffer for the final blur/stretch
+    m_deferred->CopySubresourceRegion(m_offscreen1.GetTexture(), 0, 0, 0, 0, m_gameTexture.GetTexture(), m_settings.mipmapLevels, NULL);
 
     m_blurDownscale.Render(m_deferred.Get(), m_offscreen1, m_settings.blurPasses);
 

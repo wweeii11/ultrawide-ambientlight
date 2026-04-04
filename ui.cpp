@@ -292,13 +292,13 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
             {
                 SaveSettings(settings);
             }
-            
-            if (ImGui::DragInt("Downscale", (int*)&settings.blurDownscale, 0.1f, 16, 1024))
+
+            if (ImGui::DragInt("Samples", (int*)&settings.blurSamples, 0.1f, 1, 63))
             {
                 SaveSettings(settings);
             }
 
-            if (ImGui::DragInt("Samples", (int*)&settings.blurSamples, 0.1f, 1, 63))
+            if (ImGui::DragInt("Downsampling Levels", (int*)&settings.mipmapLevels, 0.1f, 0, 12))
             {
                 SaveSettings(settings);
             }
@@ -402,4 +402,3 @@ void UpdateWindowFlags(HWND hwnd, AppSettings& settings)
 
     SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
 }
-

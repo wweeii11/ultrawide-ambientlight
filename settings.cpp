@@ -154,11 +154,11 @@ bool ReadSettings(AppSettings& settings)
     int blur = DEFAULT_BLUR_PASSES;
     inipp::get_value(ini.sections["Game"], "BlurStrength", blur);
 
-    int blurSize = DEFAULT_BLUR_DOWNSCALE;
-    inipp::get_value(ini.sections["Game"], "BlurDownscale", blurSize);
-
     int blurSamples = DEFAULT_BLUR_SAMPLES;
     inipp::get_value(ini.sections["Game"], "BlurSamples", blurSamples);
+
+    int mipmapLevels = 5; // Default to level 5 (~1/32 size)
+    inipp::get_value(ini.sections["Game"], "MipmapLevels", mipmapLevels);
 
     int frameRate = DEFAULT_FRAMERATE;
     inipp::get_value(ini.sections["Game"], "FrameRate", frameRate);
@@ -229,8 +229,8 @@ bool ReadSettings(AppSettings& settings)
 
     settings.loaded = true;
     settings.blurPasses = blur;
-    settings.blurDownscale = blurSize;
     settings.blurSamples = blurSamples;
+    settings.mipmapLevels = mipmapLevels;
     settings.frameRate = frameRate;
     settings.mirrored = mirrored;
     settings.stretched = stretched;
@@ -325,8 +325,8 @@ void SaveSettings(AppSettings& settings)
 
     ini.sections["Game"]["Resolution"] = settings.resolutions.current;
     ini.sections["Game"]["BlurStrength"] = std::to_string(settings.blurPasses);
-    ini.sections["Game"]["BlurDownscale"] = std::to_string(settings.blurDownscale);
     ini.sections["Game"]["BlurSamples"] = std::to_string(settings.blurSamples);
+    ini.sections["Game"]["MipmapLevels"] = std::to_string(settings.mipmapLevels);
     ini.sections["Game"]["FrameRate"] = std::to_string(settings.frameRate);
     ini.sections["Game"]["Mirrored"] = settings.mirrored ? "true" : "false";
     //ini.sections["Game"]["Stretched"] = settings.stretched ? "true" : "false";

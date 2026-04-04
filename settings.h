@@ -30,6 +30,8 @@
 #define DEFAULT_SHOW_IN_TASKBAR     true
 #define DEFAULT_POPUP_CONFIG_ON_FOCUS     true
 #define DEFAULT_UI_SCALE               1.0f
+#define DEFAULT_MIPMAP_LEVELS          5
+
 
 struct ResolutionSettings
 {
@@ -49,7 +51,7 @@ struct AppSettings
     bool loaded = false;
     UINT gameWidth = 0;
     UINT gameHeight = 0;
-    UINT blurDownscale = 0;
+    UINT mipmapLevels = DEFAULT_MIPMAP_LEVELS;
     UINT blurPasses = DEFAULT_BLUR_PASSES;
     UINT blurSamples = DEFAULT_BLUR_SAMPLES;
     UINT frameRate = DEFAULT_FRAMERATE;
