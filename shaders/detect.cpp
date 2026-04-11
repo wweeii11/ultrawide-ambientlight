@@ -2,6 +2,7 @@
 #include "d3dcompiler.h"
 #include "luma_bin.h"
 #include "mask_bin.h"
+#include "blackbar_bin.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -56,7 +57,8 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
     if (m_device != device)
     {
         m_lumaShader = nullptr;
-        m_maskShader = nullptr;
+        m_lumaMaskShader = nullptr;
+        m_blackBarMaskShader = nullptr;
         m_width = 0;
         m_height = 0;
     }
@@ -64,13 +66,16 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
     m_device = device;
     m_context = context;
 
-    if (!m_lumaShader || !m_maskShader)
+    if (!m_lumaShader || !m_lumaMaskShader || !m_blackBarMaskShader)
     {
         // create compute shader
         hr = device->CreateComputeShader(g_luma, sizeof(g_luma), nullptr, &m_lumaShader);
         RETURN_IF_FAILED(hr);
 
-        hr = device->CreateComputeShader(g_mask, sizeof(g_mask), nullptr, &m_maskShader);
+        hr = device->CreateComputeShader(g_mask, sizeof(g_mask), nullptr, &m_lumaMaskShader);
+        RETURN_IF_FAILED(hr);
+
+        hr = device->CreateComputeShader(g_blackbar, sizeof(g_blackbar), nullptr, &m_blackBarMaskShader);
         RETURN_IF_FAILED(hr);
     }
 
@@ -124,7 +129,64 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
     return hr;
 }
 
-HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
+inline bool isLineMostlyBlack(const uint8_t* data, UINT length, UINT stride, UINT blackThreshold, float blackRatio)
+{
+    int darkPixelCount = 0;
+    int texturedDarkPixels = 0;
+    int continuousDarkPixels = 0;
+    int continuousDarkPixelsMax = 0;
+    uint8_t previousPixel = 255;
+    uint8_t lastDarkPixel = 0;
+
+    for (UINT i = 0; i < length; ++i) {
+        uint8_t pixel = data[i * stride];
+        // Filter: Only consider pixels below the black threshold
+        if (pixel <= blackThreshold) {
+            darkPixelCount++;
+            if (darkPixelCount == 1 || previousPixel > blackThreshold)
+            {
+                continuousDarkPixels = 1; // reset count if it's the first pixel or previous was not dark
+            }
+            else
+            {
+                continuousDarkPixels++; // increment count if it's the same as previous
+            }
+            if (continuousDarkPixels > continuousDarkPixelsMax)
+            {
+                continuousDarkPixelsMax = continuousDarkPixels;
+            }
+            previousPixel = pixel;
+            // Variance: Compare only against the previous valid dark pixel
+            if (darkPixelCount > 1)
+            {
+                // Using abs() on uint8 can wrap, so we do a direct comparison
+                uint8_t diff = (pixel > lastDarkPixel) ?
+                    (pixel - lastDarkPixel) :
+                    (lastDarkPixel - pixel);
+
+                // If diff > 1, the "black" area has digital noise/texture
+                if (diff > 1)
+                {
+                    texturedDarkPixels++;
+                }
+            }
+            lastDarkPixel = pixel;
+        }
+    }
+    if (darkPixelCount == 0) return false;
+    float darkRatio = (float)darkPixelCount / (float)length;
+
+    // darkTextureRatio: What percentage of the dark pixels are "noisy"
+    float darkTextureRatio = (float)texturedDarkPixels / (float)darkPixelCount;
+
+    // Logic: 
+    // - Line is mostly dark (Method 1)
+    // - AND the dark pixels are mathematically flat (Digital Black)
+    // - AND dark pixels are also mostly continuous (not scattered noise)
+    return (darkRatio >= blackRatio);// && (darkTextureRatio < 0.05f) && (continuousDarkPixelsMax >= darkPixelCount * 0.5f);
+}
+
+HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target, bool lumaOnly)
 {
     HRESULT hr = S_OK;
 
@@ -158,6 +220,9 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     context->CSSetConstantBuffers(0, 1, nullCBs);
     context->CSSetShader(nullptr, nullptr, 0);
 
+    if (lumaOnly)
+        return hr;
+
     context->CopyResource(m_lumaStaging.Get(), m_luma.GetTexture());
 
     D3D11_MAPPED_SUBRESOURCE mappedLuma = {};
@@ -166,22 +231,14 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     const uint8_t* luma = reinterpret_cast<const uint8_t*>(mappedLuma.pData);
     const UINT pitch = mappedLuma.RowPitch;
 
-    const uint8_t uBlackThreshold = uint8_t(m_blackThreshold * 255.0f);
-
-    UINT minBlackCount = UINT(m_blackRatio * float(m_width));
     // minimum detection is 16px
     UINT minBarSize = 16;
+    UINT ublackThreshold = uint8_t(m_blackThreshold * 255.0f);
 
     m_topBar = 0;
     for (UINT y = 0; y < UINT(m_height); ++y) {
-        UINT blackCount = 0;
         const uint8_t* row = luma + y * pitch;
-        for (UINT x = 0; x < UINT(m_width); ++x) {
-            if (row[x] <= uBlackThreshold) {
-                blackCount++;
-            }
-        }
-        if (blackCount < minBlackCount)
+        if (!isLineMostlyBlack(row, m_width, 1, ublackThreshold, m_blackRatio))
         {
             m_topBar = y;
             break;
@@ -191,14 +248,8 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
 
     m_bottomBar = 0;
     for (UINT y = m_height - 1; y >= 0; --y) {
-        UINT blackCount = 0;
         const uint8_t* row = luma + y * pitch;
-        for (UINT x = 0; x < UINT(m_width); ++x) {
-            if (row[x] <= uBlackThreshold) {
-                blackCount++;
-            }
-        }
-        if (blackCount < minBlackCount)
+        if (!isLineMostlyBlack(row, m_width, 1, ublackThreshold, m_blackRatio))
         {
             m_bottomBar = (m_height - 1) - y;
             break;
@@ -208,17 +259,10 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     }
     m_bottomBar = m_bottomBar < minBarSize ? 0 : m_bottomBar;
 
-    minBlackCount = UINT(m_blackRatio * float(m_height));
     m_leftBar = 0;
     for (UINT x = 0; x < UINT(m_width); ++x) {
-        UINT blackCount = 0;
-        for (UINT y = 0; y < UINT(m_height); ++y) {
-            const uint8_t* row = luma + y * pitch;
-            if (row[x] <= uBlackThreshold) {
-                blackCount++;
-            }
-        }
-        if (blackCount < minBlackCount)
+        const uint8_t* start = luma + x;
+        if (!isLineMostlyBlack(start, m_height, m_width, ublackThreshold, m_blackRatio))
         {
             m_leftBar = x;
             break;
@@ -228,14 +272,8 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
 
     m_rightBar = 0;
     for (UINT x = m_width - 1; x >= 0; --x) {
-        UINT blackCount = 0;
-        for (UINT y = 0; y < UINT(m_height); ++y) {
-            const uint8_t* row = luma + y * pitch;
-            if (row[x] <= uBlackThreshold) {
-                blackCount++;
-            }
-        }
-        if (blackCount < minBlackCount)
+        const uint8_t* start = luma + x;
+        if (!isLineMostlyBlack(start, m_height, m_width, ublackThreshold, m_blackRatio))
         {
             m_rightBar = (m_width - 1) - x;
             break;
@@ -292,7 +330,7 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     return hr;
 }
 
-HRESULT Detection::RenderMask(ID3D11DeviceContext* context, TextureView target)
+HRESULT Detection::RenderLumaMask(ID3D11DeviceContext* context, TextureView target)
 {
     HRESULT hr = S_OK;
 
@@ -300,7 +338,7 @@ HRESULT Detection::RenderMask(ID3D11DeviceContext* context, TextureView target)
     target.GetTexture()->GetDesc(&target_desc);
 
     // Set the shader
-    context->CSSetShader(m_maskShader.Get(), nullptr, 0);
+    context->CSSetShader(m_lumaMaskShader.Get(), nullptr, 0);
 
     // Set the input texture
     ID3D11ShaderResourceView* srv = m_luma.GetSRV();
@@ -312,6 +350,39 @@ HRESULT Detection::RenderMask(ID3D11DeviceContext* context, TextureView target)
     context->Dispatch(
         (target_desc.Width + 15) / 16,
         (target_desc.Height + 15) / 16,
+        1);
+
+    uav = nullptr;
+    context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
+    srv = nullptr;
+    context->CSSetShaderResources(0, 1, &srv);
+
+    return hr;
+}
+
+HRESULT Detection::RenderBlackBarMask(ID3D11DeviceContext* context, TextureView target, bool horizontal)
+{
+    HRESULT hr = S_OK;
+
+    D3D11_TEXTURE2D_DESC target_desc = {};
+    target.GetTexture()->GetDesc(&target_desc);
+
+    // Set the shader
+    context->CSSetShader(m_blackBarMaskShader.Get(), nullptr, 0);
+
+    // Set the input texture
+    ID3D11ShaderResourceView* srv = m_luma.GetSRV();
+    context->CSSetShaderResources(0, 1, &srv);
+
+    ID3D11UnorderedAccessView* uav = target.GetUAV();
+    context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
+
+    // do 1 extra dispatch to let 0 indicate work direction and let work thread index be 1 based
+    UINT x = horizontal ? 1 : (target_desc.Width + 15 + 1) / 16;
+    UINT y = horizontal ? (target_desc.Height + 15 + 1) / 16 : 1;
+    context->Dispatch(
+        x,
+        y,
         1);
 
     uav = nullptr;

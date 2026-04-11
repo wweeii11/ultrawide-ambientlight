@@ -41,6 +41,7 @@ private:
     Copy m_copy;
     Vignette m_vignette;
     Detection m_detection;
+    Detection m_detectInner;
 
     bool m_effectRendered;
     bool m_presented;
@@ -68,10 +69,9 @@ private:
     PerfTimer m_capturePerfTimer = { "capture" };
 
     TextureView m_gameTexture;
-    TextureView m_offscreen1;
-    TextureView m_offscreen2;
-    TextureView m_offscreen3;
-    //TextureView m_offscreen4;
+    TextureView m_downsampledTexture;
+    TextureView m_processedBlurTexture;
+    TextureView m_effectCanvasTexture;
 
     HRESULT CreateOffscreen(DXGI_FORMAT format);
 
