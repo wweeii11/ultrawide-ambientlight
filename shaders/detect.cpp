@@ -1,8 +1,9 @@
 #include "detect.h"
 #include "d3dcompiler.h"
-#include "luma_bin.h"
-#include "mask_bin.h"
-#include "blackbar_bin.h"
+#include "luma_main_bin.h"
+#include "mask_main_bin.h"
+#include "blackbar_mainh_bin.h"
+#include "blackbar_mainv_bin.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -58,7 +59,8 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
     {
         m_lumaShader = nullptr;
         m_lumaMaskShader = nullptr;
-        m_blackBarMaskShader = nullptr;
+        m_blackBarHoriMaskShader = nullptr;
+        m_blackBarVertMaskShader = nullptr;
         m_width = 0;
         m_height = 0;
     }
@@ -66,16 +68,19 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
     m_device = device;
     m_context = context;
 
-    if (!m_lumaShader || !m_lumaMaskShader || !m_blackBarMaskShader)
+    if (!m_lumaShader || !m_lumaMaskShader || !m_blackBarHoriMaskShader || !m_blackBarVertMaskShader)
     {
         // create compute shader
-        hr = device->CreateComputeShader(g_luma, sizeof(g_luma), nullptr, &m_lumaShader);
+        hr = device->CreateComputeShader(g_luma_main, sizeof(g_luma_main), nullptr, &m_lumaShader);
         RETURN_IF_FAILED(hr);
 
-        hr = device->CreateComputeShader(g_mask, sizeof(g_mask), nullptr, &m_lumaMaskShader);
+        hr = device->CreateComputeShader(g_mask_main, sizeof(g_mask_main), nullptr, &m_lumaMaskShader);
         RETURN_IF_FAILED(hr);
 
-        hr = device->CreateComputeShader(g_blackbar, sizeof(g_blackbar), nullptr, &m_blackBarMaskShader);
+        hr = device->CreateComputeShader(g_blackbar_mainh, sizeof(g_blackbar_mainh), nullptr, &m_blackBarHoriMaskShader);
+        RETURN_IF_FAILED(hr);
+
+        hr = device->CreateComputeShader(g_blackbar_mainv, sizeof(g_blackbar_mainv), nullptr, &m_blackBarVertMaskShader);
         RETURN_IF_FAILED(hr);
     }
 
@@ -368,7 +373,7 @@ HRESULT Detection::RenderBlackBarMask(ID3D11DeviceContext* context, TextureView 
     target.GetTexture()->GetDesc(&target_desc);
 
     // Set the shader
-    context->CSSetShader(m_blackBarMaskShader.Get(), nullptr, 0);
+    context->CSSetShader(horizontal ? m_blackBarHoriMaskShader.Get() : m_blackBarVertMaskShader.Get(), nullptr, 0);
 
     // Set the input texture
     ID3D11ShaderResourceView* srv = m_luma.GetSRV();
@@ -377,12 +382,9 @@ HRESULT Detection::RenderBlackBarMask(ID3D11DeviceContext* context, TextureView 
     ID3D11UnorderedAccessView* uav = target.GetUAV();
     context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
 
-    // do 1 extra dispatch to let 0 indicate work direction and let work thread index be 1 based
-    UINT x = horizontal ? 1 : (target_desc.Width + 15 + 1) / 16;
-    UINT y = horizontal ? (target_desc.Height + 15 + 1) / 16 : 1;
     context->Dispatch(
-        x,
-        y,
+        horizontal ? (target_desc.Height + 63) / 64 : (target_desc.Width + 63) / 64,
+        1,
         1);
 
     uav = nullptr;

@@ -1,6 +1,6 @@
 #include "copy.h"
 #include "d3dcompiler.h"
-#include "copy_bin.h"
+#include "copy_main_bin.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -46,7 +46,7 @@ HRESULT Copy::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext
 
     if (!m_shader)
     {
-        hr = device->CreateComputeShader(g_copy, sizeof(g_copy), nullptr, &m_shader);
+        hr = device->CreateComputeShader(g_copy_main, sizeof(g_copy_main), nullptr, &m_shader);
         RETURN_IF_FAILED(hr);
 
         D3D11_SAMPLER_DESC samplerDesc = {};

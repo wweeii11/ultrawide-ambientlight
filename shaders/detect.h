@@ -29,7 +29,8 @@ private:
 
     ComPtr<ID3D11ComputeShader> m_lumaShader;
     ComPtr<ID3D11ComputeShader> m_lumaMaskShader;
-    ComPtr<ID3D11ComputeShader> m_blackBarMaskShader;
+    ComPtr<ID3D11ComputeShader> m_blackBarHoriMaskShader;
+    ComPtr<ID3D11ComputeShader> m_blackBarVertMaskShader;
 
     TextureView m_luma;
     ComPtr<ID3D11Texture2D> m_lumaStaging;

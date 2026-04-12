@@ -196,7 +196,7 @@ void AmbientLight::ValidateSettings()
 
     // Validate zoom
     m_settings.zoom = std::clamp(m_settings.zoom, 0u, 16u);
-    m_effectZoom = m_settings.zoom * 16;
+    m_effectZoom = m_settings.zoom * 4;
 }
 
 HRESULT AmbientLight::Initialize(HWND hwnd)
@@ -427,7 +427,18 @@ bool AmbientLight::RenderEffects()
 
     m_blurDownscale.Render(m_deferred.Get(), m_downsampledTexture, m_settings.blurPasses);
 
-    m_copy.Render(m_deferred.Get(), m_processedBlurTexture, m_downsampledTexture);
+    UINT mipWidth = max(1u, m_gameWidth >> m_settings.mipmapLevels);
+    UINT mipHeight = max(1u, m_gameHeight >> m_settings.mipmapLevels);
+    if (mipWidth > m_effectZoom * 2 && mipHeight > m_effectZoom * 2)
+    {
+        m_copy.Render(m_deferred.Get(), m_processedBlurTexture, 0, 0, m_gameWidth, m_gameHeight,
+            m_downsampledTexture, m_effectZoom, m_effectZoom, mipWidth - m_effectZoom * 2, mipHeight - m_effectZoom * 2);
+    }
+    else
+    {
+        m_copy.Render(m_deferred.Get(), m_processedBlurTexture, m_downsampledTexture);
+    }
+    
 
     // Detect "inner" letterboxing within the game frame, e.g.
     // - Display 32:9
@@ -466,17 +477,6 @@ bool AmbientLight::RenderEffects()
         }
 
         D3D11_BOX src = srcBar.GetBox();
-        src.left += m_effectZoom;
-        src.right -= m_effectZoom;
-        src.top += m_effectZoom;
-        src.bottom -= m_effectZoom;
-
-        if (src.right <= src.left || src.bottom <= src.top)
-        {
-            // the zoom setting is too large, restore the non-zoom box
-            src = srcBar.GetBox();
-        }
-
         D3D11_BOX dst = m_blackBars[i].GetBox();
 
         Copy::Flip flip = Copy::FlipNone;

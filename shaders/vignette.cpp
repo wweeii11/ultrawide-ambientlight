@@ -1,6 +1,6 @@
 #include "vignette.h"
 #include "d3dcompiler.h"
-#include "vignette_bin.h"
+#include "vignette_main_bin.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -40,7 +40,7 @@ HRESULT Vignette::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCon
 
     if (!m_shader)
     {
-        hr = device->CreateComputeShader(g_vignette, sizeof(g_vignette), nullptr, &m_shader);
+        hr = device->CreateComputeShader(g_vignette_main, sizeof(g_vignette_main), nullptr, &m_shader);
         RETURN_IF_FAILED(hr);
 
         // Create constant buffer
