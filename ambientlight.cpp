@@ -108,7 +108,7 @@ void AmbientLight::UpdateSettings()
             m_settings.vignetteSmoothness,
             windowAspect);
 
-        CreateOffscreen(DXGI_FORMAT_B8G8R8A8_UNORM);
+        CreateOffscreen(m_capture.GetDesktopDesc().ModeDesc.Format/*DXGI_FORMAT_B8G8R8A8_UNORM*/);
 
         m_detection.Initialize(m_device,
             m_immediate,
@@ -231,11 +231,13 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
     m_windowWidth = RECT_WIDTH(windowRect);
     m_windowHeight = RECT_HEIGHT(windowRect);
 
+    hr = m_capture.Initialize(m_device);
+
     // create swap chain
     DXGI_SWAP_CHAIN_DESC1 scd = {};
     scd.Width = m_windowWidth;
     scd.Height = m_windowHeight;
-    scd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    scd.Format = m_capture.GetDesktopDesc().ModeDesc.Format/*DXGI_FORMAT_B8G8R8A8_UNORM*/;
     scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scd.BufferCount = 2;
     scd.SampleDesc.Count = 1;
@@ -264,8 +266,6 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 
     hr = m_dcompDevice->Commit();
     RETURN_IF_FAILED(hr);
-
-    hr = m_capture.Initialize(m_device);
 
     m_copy.Initialize(m_device, m_deferred.Get());
 
@@ -414,6 +414,10 @@ bool AmbientLight::RenderEffects()
 
     if (IS_BOX_EMPTY(game_box))
         return false;
+	DXGI_FORMAT dupFormat = m_capture.GetDesktopDesc().ModeDesc.Format;
+	D3D11_TEXTURE2D_DESC gameDesc = {};
+    m_gameTexture.GetTexture()->GetDesc(&gameDesc);
+    assert(gameDesc.Format == desc.Format);
 
     m_deferred->CopySubresourceRegion(m_gameTexture.GetTexture(), 0, 0, 0, 0, desktopTexture.Get(), 0, &game_box);
 
@@ -446,8 +450,8 @@ bool AmbientLight::RenderEffects()
     // - Cutscene 21:9
     // the main detection will detect the pillarbox between game and display, and the second detection will detect the cutscene letterbox
     // we will then apply a black bar matching the inner cutscene to crop the rendered blur effect
-    m_detectInner.Detect(m_deferred.Get(), m_gameTexture, true);
-    m_detectInner.RenderBlackBarMask(m_deferred.Get(), m_processedBlurTexture, m_gameHeight == m_windowHeight);
+    // m_detectInner.Detect(m_deferred.Get(), m_gameTexture, true);
+    // m_detectInner.RenderBlackBarMask(m_deferred.Get(), m_processedBlurTexture, m_gameHeight == m_windowHeight);
 
     ID3D11RenderTargetView* rtv = m_effectCanvasTexture.GetRTV();
     float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };

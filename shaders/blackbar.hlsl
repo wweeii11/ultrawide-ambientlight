@@ -1,5 +1,5 @@
 Texture2D<float> lumaTexture : register(t0);
-RWTexture2D<unorm float4> outputTexture : register(u0);
+RWTexture2D<float4> outputTexture : register(u0);
 
 static const float LumaThreshold = 0.03f; // Adjust as needed
 static const float BlackPixelRatioThreshold = 0.7f; // 70% black to consider as a border

@@ -27,11 +27,18 @@ HRESULT DesktopCapture::Initialize(ComPtr<ID3D11Device> device)
     hr = dxgiAdapter->EnumOutputs(0, &dxgiOutput);
     RETURN_IF_FAILED(hr);
 
-    ComPtr<IDXGIOutput1> dxgiOutput1;
-    hr = dxgiOutput.As(&dxgiOutput1);
+    ComPtr<IDXGIOutput5> dxgiOutput5;
+    hr = dxgiOutput.As(&dxgiOutput5);
     RETURN_IF_FAILED(hr);
 
-    hr = dxgiOutput1->DuplicateOutput(m_device.Get(), &m_duplication);
+    std::vector<DXGI_FORMAT> formats = {
+        DXGI_FORMAT_B8G8R8A8_UNORM,
+        DXGI_FORMAT_R10G10B10A2_UNORM,
+		DXGI_FORMAT_R16G16B16A16_FLOAT
+	};
+
+    
+    hr = dxgiOutput5->DuplicateOutput1(m_device.Get(), 0, 3, formats.data(), & m_duplication);
     RETURN_IF_FAILED(hr);
 
     return hr;
