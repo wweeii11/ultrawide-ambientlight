@@ -39,12 +39,12 @@ function(compile_shader_entry SHADER_FILE ENTRY_POINT VARIABLE_SUFFIX)
 endfunction()
 
 compile_shader_entry("shaders/blur.hlsl" "main" "main")
-compile_shader_entry("shaders/luma.hlsl" "main" "main")
+compile_shader_entry("shaders/luma.hlsl" "mainSDR" "mainSDR")
+compile_shader_entry("shaders/luma.hlsl" "mainHDR10" "mainHDR10")
+compile_shader_entry("shaders/luma.hlsl" "mainSCRGB" "mainSCRGB")
 compile_shader_entry("shaders/vignette.hlsl" "main" "main")
 compile_shader_entry("shaders/copy.hlsl" "main" "main")
 compile_shader_entry("shaders/mask.hlsl" "main" "main")
-compile_shader_entry("shaders/blackbar.hlsl" "mainh" "mainh")
-compile_shader_entry("shaders/blackbar.hlsl" "mainv" "mainv")
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/shaders)
 

@@ -15,14 +15,14 @@ public:
     HRESULT ReleaseFrame();
 
     ComPtr<ID3D11Texture2D> GetDesktopTexture() { return m_desktopTexture; }
-    DXGI_OUTDUPL_DESC1 GetDesktopDesc()
+    DXGI_OUTDUPL_DESC GetDesktopDesc()
     {
+        DXGI_OUTDUPL_DESC desc = {};
         if (m_duplication)
         {
-            DXGI_OUTDUPL_DESC desc = {};
             m_duplication->GetDesc(&desc);
-            return desc;
-		}
+        }
+        return desc;
     }
 private:
     ComPtr<ID3D11Device> m_device;

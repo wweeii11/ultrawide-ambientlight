@@ -16,9 +16,8 @@ public:
     HRESULT Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context, UINT width, UINT height,
         float blackThreshold, float blackRatio, bool symmetricBars, UINT reservedWidth, UINT reservedHeight);
 
-    HRESULT Detect(ID3D11DeviceContext* context, TextureView target, bool lumaOnly = false);
+    HRESULT Detect(ID3D11DeviceContext* context, TextureView target);
     HRESULT RenderLumaMask(ID3D11DeviceContext* context, TextureView target);
-    HRESULT RenderBlackBarMask(ID3D11DeviceContext* context, TextureView target, bool horizontal);
 
     std::vector<BlackBar> GetDetectedBars();
     std::vector<BlackBar> GetFixedBars(UINT gameWidth, UINT gameHeight);
@@ -28,9 +27,9 @@ private:
     ComPtr<ID3D11DeviceContext> m_context;
 
     ComPtr<ID3D11ComputeShader> m_lumaShader;
+    ComPtr<ID3D11ComputeShader> m_lumaHDR10Shader;
+    ComPtr<ID3D11ComputeShader> m_lumaSCRGBShader;
     ComPtr<ID3D11ComputeShader> m_lumaMaskShader;
-    ComPtr<ID3D11ComputeShader> m_blackBarHoriMaskShader;
-    ComPtr<ID3D11ComputeShader> m_blackBarVertMaskShader;
 
     TextureView m_luma;
     ComPtr<ID3D11Texture2D> m_lumaStaging;

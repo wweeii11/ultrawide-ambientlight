@@ -264,3 +264,22 @@ struct ScopedPerfTimer {
     ScopedPerfTimer(PerfTimer& t) : timer(t) { timer.Start(); }
     ~ScopedPerfTimer() { timer.Stop(); }
 };
+
+__declspec(align(16))
+class ElapsedTimer {
+public:
+    ElapsedTimer() {
+        m_last = 0;
+    }
+
+    bool HasElapsed(ULONGLONG intervalMs) {
+        ULONGLONG now = GetTickCount64();
+        if (m_last == 0 || (now - m_last) >= intervalMs) {
+            m_last = now;
+            return true;
+        }
+        return false;
+    }
+private:
+    ULONGLONG m_last;
+};
