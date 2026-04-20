@@ -166,7 +166,7 @@ void AmbientLight::ValidateSettings()
             height = 9;
         }
 
-        m_blackBars = m_detection.GetFixedBars(width, height);
+        m_blackBars = m_detection.GetFixedBars(m_windowWidth, m_windowHeight, width, height);
     }
 
 
