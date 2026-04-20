@@ -20,7 +20,7 @@ public:
     HRESULT RenderLumaMask(ID3D11DeviceContext* context, TextureView target);
 
     std::vector<BlackBar> GetDetectedBars();
-    std::vector<BlackBar> GetFixedBars(UINT gameWidth, UINT gameHeight);
+    static std::vector<BlackBar> GetFixedBars(UINT windowWidth, UINT windowHeight, UINT gameWidth, UINT gameHeight);
 
 private:
     ComPtr<ID3D11Device> m_device;

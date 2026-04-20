@@ -387,30 +387,30 @@ HRESULT Detection::RenderLumaMask(ID3D11DeviceContext* context, TextureView targ
 }
 
 
-std::vector<BlackBar> Detection::GetFixedBars(UINT gameWidth, UINT gameHeight)
+std::vector<BlackBar> Detection::GetFixedBars(UINT windowWidth, UINT windowHeight, UINT gameWidth, UINT gameHeight)
 {
     std::vector<BlackBar> ret;
 
     float aspect = (float)gameWidth / (float)gameHeight;
-    float windowAspect = (float)m_width / (float)m_height;
+    float windowAspect = (float)windowWidth / (float)windowHeight;
 
-    gameHeight = (UINT)m_height;
+    gameHeight = (UINT)windowHeight;
     gameWidth = (UINT)std::round((float)gameHeight * aspect);
 
-    if (gameWidth > m_width)
+    if (gameWidth > windowWidth)
     {
-        gameWidth = (UINT)m_width;
+        gameWidth = (UINT)windowWidth;
         gameHeight = (UINT)std::round((float)gameWidth / aspect);
     }
     
     if (aspect > windowAspect)
     {
-        UINT barHeight = (m_height - gameHeight) / 2;
+        UINT barHeight = (windowHeight - gameHeight) / 2;
         // letterbox
         BlackBar topBar = {};
-        topBar.parentWidth = m_width;
-        topBar.parentHeight = m_height;
-        topBar.width = m_width;
+        topBar.parentWidth = windowWidth;
+        topBar.parentHeight = windowHeight;
+        topBar.width = windowWidth;
         topBar.height = barHeight;
         topBar.position = Top;
 
@@ -423,13 +423,13 @@ std::vector<BlackBar> Detection::GetFixedBars(UINT gameWidth, UINT gameHeight)
     }
     else
     {
-        UINT barWidth = (m_width - gameWidth) / 2;
+        UINT barWidth = (windowWidth - gameWidth) / 2;
         // pillarbox
         BlackBar leftBar = {};
-        leftBar.parentWidth = m_width;
-        leftBar.parentHeight = m_height;
+        leftBar.parentWidth = windowWidth;
+        leftBar.parentHeight = windowHeight;
         leftBar.width = barWidth;
-        leftBar.height = m_height;
+        leftBar.height = windowHeight;
         leftBar.position = Left;
 
         BlackBar rightBar = leftBar;
