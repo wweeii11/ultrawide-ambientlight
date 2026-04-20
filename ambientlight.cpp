@@ -125,7 +125,7 @@ void AmbientLight::UpdateSettings()
         m_detectInner.Initialize(m_device,
             m_deferred,
             m_gameWidth,
-            m_gameWidth,
+            m_gameHeight,
             m_settings.autoDetectionBrightnessThreshold,
             m_settings.autoDetectionBlackRatio,
             false,

@@ -1,5 +1,10 @@
 Texture2D<float> lumaTexture : register(t0);
+
+#ifdef USE_UNORM
+RWTexture2D<unorm float4> outputTexture : register(u0);
+#else
 RWTexture2D<float4> outputTexture : register(u0);
+#endif
 
 // sample the luma texture and use it as an alpha mask
 // for luma < 0.5, output original alpha, otherwise output 0.0 alpha

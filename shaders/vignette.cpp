@@ -1,6 +1,7 @@
 #include "vignette.h"
 #include "d3dcompiler.h"
 #include "vignette_main_bin.h"
+#include "vignette_mainUNorm_bin.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -33,14 +34,18 @@ HRESULT Vignette::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCon
     if (m_device != device)
     {
         m_shader = nullptr;
+        m_shaderUNorm = nullptr;
     }
 
     m_device = device;
     m_context = context;
 
-    if (!m_shader)
+    if (!m_shader ||!m_shaderUNorm)
     {
         hr = device->CreateComputeShader(g_vignette_main, sizeof(g_vignette_main), nullptr, &m_shader);
+        RETURN_IF_FAILED(hr);
+
+        hr = device->CreateComputeShader(g_vignette_mainUNorm, sizeof(g_vignette_mainUNorm), nullptr, &m_shaderUNorm);
         RETURN_IF_FAILED(hr);
 
         // Create constant buffer
@@ -76,7 +81,15 @@ HRESULT Vignette::Render(ID3D11DeviceContext* context, TextureView target)
 
     context->CSSetConstantBuffers(0, 1, m_params.GetAddressOf());
 
-    context->CSSetShader(m_shader.Get(), nullptr, 0);
+    if (target_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT)
+    {
+        context->CSSetShader(m_shader.Get(), nullptr, 0);
+    }
+    else
+    {
+        context->CSSetShader(m_shaderUNorm.Get(), nullptr, 0);
+    }
+    
 
     ID3D11UnorderedAccessView* uav = target.GetUAV();
     context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);

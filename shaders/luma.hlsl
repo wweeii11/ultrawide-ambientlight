@@ -34,7 +34,7 @@ void mainSDR(uint3 id : SV_DispatchThreadID)
         return;
 
     float4 color = InputTexture.Load(int3(id.xy, 0));
-    float3 linearColor = ApplySDRLinear(color.rgb);
+    float3 linearColor = color.rgb; //ApplySDRLinear(color.rgb);
     
     // Output 0-1 range for black bar detection
     OutputTexture[id.xy] = saturate(dot(linearColor, LumaWeights709));

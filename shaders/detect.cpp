@@ -4,6 +4,7 @@
 #include "luma_mainSCRGB_bin.h"
 #include "luma_mainHDR10_bin.h"
 #include "mask_main_bin.h"
+#include "mask_mainUNorm_bin.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -68,7 +69,7 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
     m_device = device;
     m_context = context;
 
-    if (!m_lumaShader || !m_lumaMaskShader || !m_lumaHDR10Shader || !m_lumaSCRGBShader)
+    if (!m_lumaShader || !m_lumaMaskShader || !m_lumaHDR10Shader || !m_lumaSCRGBShader || !m_lumaMaskShaderUNorm)
     {
         // create compute shader
         hr = device->CreateComputeShader(g_luma_mainSDR, sizeof(g_luma_mainSDR), nullptr, &m_lumaShader);
@@ -82,6 +83,10 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
 
         hr = device->CreateComputeShader(g_mask_main, sizeof(g_mask_main), nullptr, &m_lumaMaskShader);
         RETURN_IF_FAILED(hr);
+
+        hr = device->CreateComputeShader(g_mask_mainUNorm, sizeof(g_mask_mainUNorm), nullptr, &m_lumaMaskShaderUNorm);
+        RETURN_IF_FAILED(hr);
+        
     }
 
 
@@ -352,7 +357,14 @@ HRESULT Detection::RenderLumaMask(ID3D11DeviceContext* context, TextureView targ
     target.GetTexture()->GetDesc(&target_desc);
 
     // Set the shader
-    context->CSSetShader(m_lumaMaskShader.Get(), nullptr, 0);
+    if (target_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT)
+    {
+        context->CSSetShader(m_lumaMaskShader.Get(), nullptr, 0); 
+    }
+    else
+    {
+        context->CSSetShader(m_lumaMaskShaderUNorm.Get(), nullptr, 0);
+    }
 
     // Set the input texture
     ID3D11ShaderResourceView* srv = m_luma.GetSRV();
