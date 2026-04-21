@@ -24,10 +24,12 @@ public:
         }
         return desc;
     }
+    DXGI_OUTPUT_DESC1 GetOutputDesc1() { return m_outputDesc1; }
 private:
     ComPtr<ID3D11Device> m_device;
     ComPtr<ID3D11DeviceContext> m_context;
     ComPtr<IDXGIOutputDuplication> m_duplication;
 
     ComPtr<ID3D11Texture2D> m_desktopTexture;
+    DXGI_OUTPUT_DESC1 m_outputDesc1 = {};
 };

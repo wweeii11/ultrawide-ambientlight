@@ -12,6 +12,9 @@
 
 using namespace DirectX;
 
+#define SDR_LUMA_THRESHOLD 0.01f
+#define HDR10_LUMA_THRESHOLD 0.0001f
+
 Detection::Detection()
 {
 }
@@ -34,7 +37,7 @@ static void CreateLumaMaskAndStaging(
     textureDesc.Height = height;
     textureDesc.MipLevels = 1;
     textureDesc.ArraySize = 1;
-    textureDesc.Format = DXGI_FORMAT_R8_UNORM;
+    textureDesc.Format = DXGI_FORMAT_R32_FLOAT;
     textureDesc.SampleDesc.Count = 1;
     textureDesc.SampleDesc.Quality = 0;
     textureDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -53,7 +56,8 @@ static void CreateLumaMaskAndStaging(
 HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context,
     UINT width, UINT height,
     float blackThreshold, float blackRatio, bool symmetricBars,
-    UINT reservedWidth, UINT reservedHeight)
+    UINT reservedWidth, UINT reservedHeight,
+    DXGI_COLOR_SPACE_TYPE colorSpace)
 {
     HRESULT hr = S_OK;
     if (m_device != device)
@@ -107,17 +111,23 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
         }
     }
 
+    if (m_width != width || m_height != height)
+    {
+        m_topBar = 0;
+        m_bottomBar = m_height;
+        m_leftBar = 0;
+        m_rightBar = m_width;
+        m_detectWidth = m_width;
+        m_detectHeight = m_height;
+    }
     m_width = width;
     m_height = height;
+
     m_blackThreshold = blackThreshold;
     m_blackRatio = blackRatio;
     m_symmetricBars = symmetricBars;
-    m_topBar = 0;
-    m_bottomBar = m_height;
-    m_leftBar = 0;
-    m_rightBar = m_width;
-    m_detectWidth = m_width;
-    m_detectHeight = m_height;
+
+    m_colorSpace = colorSpace;
 
     m_reservedWidth = reservedWidth;
     m_reservedHeight = reservedHeight;
@@ -139,61 +149,38 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
     return hr;
 }
 
-inline bool isLineMostlyBlack(const uint8_t* data, UINT length, UINT stride, UINT blackThreshold, float blackRatio)
+inline bool isLineMostlyBlack(const float* data, UINT length, UINT stride, float blackThreshold, float blackRatio, float varianceThreshold)
 {
     int darkPixelCount = 0;
-    int texturedDarkPixels = 0;
-    int continuousDarkPixels = 0;
-    int continuousDarkPixelsMax = 0;
-    uint8_t previousPixel = 255;
-    uint8_t lastDarkPixel = 0;
+    float sum = 0.0f;
+    float sumSq = 0.0f;
 
-    for (UINT i = 0; i < length; ++i) {
-        uint8_t pixel = data[i * stride];
-        // Filter: Only consider pixels below the black threshold
-        if (pixel <= blackThreshold) {
-            darkPixelCount++;
-            if (darkPixelCount == 1 || previousPixel > blackThreshold)
-            {
-                continuousDarkPixels = 1; // reset count if it's the first pixel or previous was not dark
-            }
-            else
-            {
-                continuousDarkPixels++; // increment count if it's the same as previous
-            }
-            if (continuousDarkPixels > continuousDarkPixelsMax)
-            {
-                continuousDarkPixelsMax = continuousDarkPixels;
-            }
-            previousPixel = pixel;
-            // Variance: Compare only against the previous valid dark pixel
-            if (darkPixelCount > 1)
-            {
-                // Using abs() on uint8 can wrap, so we do a direct comparison
-                uint8_t diff = (pixel > lastDarkPixel) ?
-                    (pixel - lastDarkPixel) :
-                    (lastDarkPixel - pixel);
-
-                // If diff > 1, the "black" area has digital noise/texture
-                if (diff > 1)
-                {
-                    texturedDarkPixels++;
-                }
-            }
-            lastDarkPixel = pixel;
+    for (UINT i = 0; i < length; ++i)
+    {
+        float pixel = data[i * stride];
+        if (pixel <= blackThreshold)
+        {
+            ++darkPixelCount;
+            sum += pixel;
+            sumSq += pixel * pixel;
         }
     }
-    if (darkPixelCount == 0) return false;
+
+    if (darkPixelCount == 0)
+        return false;
+
     float darkRatio = (float)darkPixelCount / (float)length;
+    if (darkRatio < blackRatio)
+        return false;
 
-    // darkTextureRatio: What percentage of the dark pixels are "noisy"
-    float darkTextureRatio = (float)texturedDarkPixels / (float)darkPixelCount;
+    // Variance of the dark pixels only: Var = E[x^2] - E[x]^2
+    float n = (float)darkPixelCount;
+    float mean = sum / n;
+    float variance = (sumSq / n) - (mean * mean);
 
-    // Logic: 
-    // - Line is mostly dark (Method 1)
-    // - AND the dark pixels are mathematically flat (Digital Black)
-    // - AND dark pixels are also mostly continuous (not scattered noise)
-    return (darkRatio >= blackRatio);// && (darkTextureRatio < 0.05f) && (continuousDarkPixelsMax >= darkPixelCount * 0.5f);
+    // True black (bars/chrome) has near-zero variance — all pixels clump around 0
+    // Dark HDR content has measurable variance even if all pixels are below threshold
+    return (variance <= varianceThreshold);
 }
 
 HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
@@ -207,11 +194,24 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     switch (target_desc.Format)
     {
     case DXGI_FORMAT_R10G10B10A2_UNORM:
-        // TODO check for rgb10a2 SDR
-        context->CSSetShader(m_lumaHDR10Shader.Get(), nullptr, 0);
+        if (m_colorSpace == DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709)
+        {
+            context->CSSetShader(m_lumaShader.Get(), nullptr, 0);
+        }
+        else
+        {
+            context->CSSetShader(m_lumaHDR10Shader.Get(), nullptr, 0);
+        }
         break;
     case DXGI_FORMAT_R16G16B16A16_FLOAT:
-        context->CSSetShader(m_lumaSCRGBShader.Get(), nullptr, 0);
+        if (m_colorSpace == DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709)
+        {
+            context->CSSetShader(m_lumaSCRGBShader.Get(), nullptr, 0);
+        }
+        else
+        {
+            context->CSSetShader(m_lumaHDR10Shader.Get(), nullptr, 0);
+        }
         break;
     default:
         context->CSSetShader(m_lumaShader.Get(), nullptr, 0);
@@ -247,17 +247,32 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     D3D11_MAPPED_SUBRESOURCE mappedLuma = {};
     context->Map(m_lumaStaging.Get(), 0, D3D11_MAP_READ, 0, &mappedLuma);
 
-    const uint8_t* luma = reinterpret_cast<const uint8_t*>(mappedLuma.pData);
-    const UINT pitch = mappedLuma.RowPitch;
+    const float* luma = reinterpret_cast<const float*>(mappedLuma.pData);
+    const UINT pitch = mappedLuma.RowPitch / sizeof(float);
 
     // minimum detection is 16px
     UINT minBarSize = 16;
-    UINT ublackThreshold = uint8_t(m_blackThreshold * 255.0f);
 
+    // maximum threshold for black detection
+    float maxBlackThreshold = SDR_LUMA_THRESHOLD;
+    float blackVariance = 1e-6f;
+    // Adjust threshold for HDR10 PQ content
+    switch (m_colorSpace)
+    {
+        case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
+            maxBlackThreshold = HDR10_LUMA_THRESHOLD;
+            blackVariance = 1e-10f;
+            break;
+    }
+
+    // m_blackThreshold is user setting between 0.0 and 1.0
+    float blackThreshold = m_blackThreshold * maxBlackThreshold;
+
+    
     m_topBar = 0;
     for (UINT y = 0; y < UINT(m_height); ++y) {
-        const uint8_t* row = luma + y * pitch;
-        if (!isLineMostlyBlack(row, m_width, 1, ublackThreshold, m_blackRatio))
+        const float* row = luma + y * pitch;
+        if (!isLineMostlyBlack(row, m_width, 1, blackThreshold, m_blackRatio, blackVariance))
         {
             m_topBar = y;
             break;
@@ -267,8 +282,8 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
 
     m_bottomBar = 0;
     for (UINT y = m_height - 1; y >= 0; --y) {
-        const uint8_t* row = luma + y * pitch;
-        if (!isLineMostlyBlack(row, m_width, 1, ublackThreshold, m_blackRatio))
+        const float* row = luma + y * pitch;
+        if (!isLineMostlyBlack(row, m_width, 1, blackThreshold, m_blackRatio, blackVariance))
         {
             m_bottomBar = (m_height - 1) - y;
             break;
@@ -280,8 +295,8 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
 
     m_leftBar = 0;
     for (UINT x = 0; x < UINT(m_width); ++x) {
-        const uint8_t* start = luma + x;
-        if (!isLineMostlyBlack(start, m_height, m_width, ublackThreshold, m_blackRatio))
+        const float* start = luma + x;
+        if (!isLineMostlyBlack(start, m_height, m_width, blackThreshold, m_blackRatio, blackVariance))
         {
             m_leftBar = x;
             break;
@@ -291,8 +306,8 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
 
     m_rightBar = 0;
     for (UINT x = m_width - 1; x >= 0; --x) {
-        const uint8_t* start = luma + x;
-        if (!isLineMostlyBlack(start, m_height, m_width, ublackThreshold, m_blackRatio))
+        const float* start = luma + x;
+        if (!isLineMostlyBlack(start, m_height, m_width, blackThreshold, m_blackRatio, blackVariance))
         {
             m_rightBar = (m_width - 1) - x;
             break;

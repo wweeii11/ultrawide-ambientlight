@@ -4,6 +4,7 @@
 #include "DirectXMath.h"
 #include <memory>
 #include <vector>
+#include "dxgi1_6.h"
 
 using namespace DirectX;
 
@@ -14,7 +15,7 @@ public:
     ~Detection();
 
     HRESULT Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context, UINT width, UINT height,
-        float blackThreshold, float blackRatio, bool symmetricBars, UINT reservedWidth, UINT reservedHeight);
+        float blackThreshold, float blackRatio, bool symmetricBars, UINT reservedWidth, UINT reservedHeight, DXGI_COLOR_SPACE_TYPE colorSpace);
 
     HRESULT Detect(ID3D11DeviceContext* context, TextureView target);
     HRESULT RenderLumaMask(ID3D11DeviceContext* context, TextureView target);
@@ -52,4 +53,6 @@ private:
 
     // detected non-black area
     UINT m_detectWidth, m_detectHeight;
+
+    DXGI_COLOR_SPACE_TYPE m_colorSpace;
 };

@@ -112,6 +112,7 @@ void AmbientLight::UpdateSettings()
 
         CreateOffscreen(m_capture.GetDesktopDesc().ModeDesc.Format/*DXGI_FORMAT_B8G8R8A8_UNORM*/);
 
+        DXGI_COLOR_SPACE_TYPE colorSpace = m_capture.GetOutputDesc1().ColorSpace;
         m_detection.Initialize(m_device,
             m_immediate,
             m_windowWidth,
@@ -120,7 +121,8 @@ void AmbientLight::UpdateSettings()
             m_settings.autoDetectionBlackRatio,
             m_settings.autoDetectionSymmetricBars,
             m_settings.autoDetectionReservedArea ? m_settings.autoDetectionReservedWidth : 0,
-            m_settings.autoDetectionReservedArea ? m_settings.autoDetectionReservedHeight : 0);
+            m_settings.autoDetectionReservedArea ? m_settings.autoDetectionReservedHeight : 0,
+            colorSpace);
 
         m_detectInner.Initialize(m_device,
             m_deferred,
@@ -130,7 +132,8 @@ void AmbientLight::UpdateSettings()
             m_settings.autoDetectionBlackRatio,
             false,
             0,
-            0);
+            0,
+            colorSpace);
 
         InitUI(m_hwnd, m_device.Get(), m_deferred.Get(), m_settings);
     }

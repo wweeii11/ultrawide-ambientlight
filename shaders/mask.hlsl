@@ -21,7 +21,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     lumaTexture.Load(int3(DTid.xy, 0));
     float luma = lumaTexture.Load(int3(DTid.xy, 0));
     float4 color = outputTexture.Load(int3(DTid.xy, 0));
-    float alpha = luma < 0.1 ? 1.0 : (1.0 - luma) / 4;
+    float alpha = luma < 0.01 ? 1.0 : (1.0 - luma) / 4;
     color = color * alpha;
     outputTexture[DTid.xy] = color;
 

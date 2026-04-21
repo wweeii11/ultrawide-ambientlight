@@ -37,6 +37,19 @@ HRESULT DesktopCapture::Initialize(ComPtr<ID3D11Device> device)
 		DXGI_FORMAT_R16G16B16A16_FLOAT
 	};
 
+    ComPtr<IDXGIOutput6> dxgiOutput6;
+    hr = dxgiOutput.As(&dxgiOutput6);
+
+    if (SUCCEEDED(hr))
+    {
+        DXGI_OUTPUT_DESC1 desc1 = {};
+        dxgiOutput6->GetDesc1(&desc1);
+        wchar_t buffer[256];
+        swprintf_s(buffer, L"DesktopCapture: Output %s, ColorSpace: %d\n", desc1.DeviceName, desc1.ColorSpace);
+        OutputDebugStringW(buffer);
+
+        m_outputDesc1 = desc1;
+    }
     
     hr = dxgiOutput5->DuplicateOutput1(m_device.Get(), 0, 3, formats.data(), & m_duplication);
     RETURN_IF_FAILED(hr);

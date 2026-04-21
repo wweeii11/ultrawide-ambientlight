@@ -34,7 +34,7 @@ void mainSDR(uint3 id : SV_DispatchThreadID)
         return;
 
     float4 color = InputTexture.Load(int3(id.xy, 0));
-    float3 linearColor = color.rgb; //ApplySDRLinear(color.rgb);
+    float3 linearColor = ApplySDRLinear(color.rgb);
     
     // Output 0-1 range for black bar detection
     OutputTexture[id.xy] = saturate(dot(linearColor, LumaWeights709));
@@ -50,7 +50,7 @@ void mainHDR10(uint3 id : SV_DispatchThreadID)
         return;
 
     float4 color = InputTexture.Load(int3(id.xy, 0));
-    float3 linearColor = ApplyPQDecode(color.rgb);
+    float3 linearColor = ApplyPQDecode(saturate(color.rgb));
     
     // Scale up so dark HDR content is detectable in R8_UNORM
     float luma = dot(linearColor, LumaWeights2020);
