@@ -253,7 +253,7 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 
     hr = dxgiFactory2->CreateSwapChainForComposition(m_device.Get(), &scd, nullptr, &m_swapchain);
     char buffer[256];
-    sprintf_s(buffer, "Swapchain created: %dx%d, format: %s\n", scd.Width, scd.Height, 
+    sprintf_s(buffer, "Swapchain created: %dx%d, format: %s\n", scd.Width, scd.Height,
         scd.Format == DXGI_FORMAT_B8G8R8A8_UNORM ? "BGRA8"
         : scd.Format == DXGI_FORMAT_R10G10B10A2_UNORM ? "RGBA10"
         : scd.Format == DXGI_FORMAT_R16G16B16A16_FLOAT ? "RGBAF16"
@@ -343,7 +343,7 @@ void AmbientLight::Render()
         OutputDebugStringA(buffer);
     }
 #endif
-    
+
     ScopedPerfTimer frameTimer(m_framePerfTimer);
 
     {
@@ -427,8 +427,8 @@ bool AmbientLight::RenderEffects()
 
     if (IS_BOX_EMPTY(game_box))
         return false;
-	DXGI_FORMAT dupFormat = m_capture.GetDesktopDesc().ModeDesc.Format;
-	D3D11_TEXTURE2D_DESC gameDesc = {};
+    DXGI_FORMAT dupFormat = m_capture.GetDesktopDesc().ModeDesc.Format;
+    D3D11_TEXTURE2D_DESC gameDesc = {};
     m_gameTexture.GetTexture()->GetDesc(&gameDesc);
     assert(gameDesc.Format == desc.Format);
 
@@ -455,6 +455,44 @@ bool AmbientLight::RenderEffects()
     {
         m_copy.Render(m_deferred.Get(), m_processedBlurTexture, m_downsampledTexture);
     }
+
+    bool clearInner = false;
+    std::vector<BlackBar> innerBars = m_detectInner.GetDetectedBars();
+    if (innerBars.size() == 2)
+    {
+        // outer pillar box, inner letter box
+        if (m_gameHeight == m_windowHeight)
+        {
+            BlackBar& ib = innerBars[0];
+            if (ib.width == m_gameWidth)
+            {
+                clearInner = true;
+            }
+        }
+        // outer letter box, inner pillar box
+        else if (m_gameWidth == m_windowWidth)
+        {
+            BlackBar& ib = innerBars[0];
+            if (ib.height == m_gameHeight)
+            {
+                clearInner = true;
+            }
+        }
+    }
+
+    if (clearInner)
+    {
+        // clear the inner box in the effect texture
+        ComPtr<ID3D11DeviceContext1> deferred1 = nullptr;
+        m_deferred.As(&deferred1);
+        if (deferred1)
+        {
+            float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+            D3D11_RECT rects[2] = { innerBars[0].toRect(), innerBars[1].toRect() };
+            deferred1->ClearView(m_processedBlurTexture.GetRTV(), color, &rects[0], 2);
+        }
+    }
+
 
     ID3D11RenderTargetView* rtv = m_effectCanvasTexture.GetRTV();
     float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -483,8 +521,8 @@ bool AmbientLight::RenderEffects()
             break;
         }
 
-        D3D11_BOX src = srcBar.GetBox();
-        D3D11_BOX dst = m_blackBars[i].GetBox();
+        D3D11_BOX src = srcBar.toBox();
+        D3D11_BOX dst = m_blackBars[i].toBox();
 
         Copy::Flip flip = Copy::FlipNone;
         if (m_settings.mirrored)
@@ -577,7 +615,7 @@ void AmbientLight::Present()
             int numRects = 0;
             for (auto& bar : m_blackBars)
             {
-                D3D11_BOX box = bar.GetBox();
+                D3D11_BOX box = bar.toBox();
                 if (IS_BOX_EMPTY(box))
                     continue;
                 m_dirtyRects[numRects].left = box.left;
@@ -659,7 +697,7 @@ void AmbientLight::Detect()
             // - Cutscene 21:9
             // the main detection will detect the pillarbox between game and display, and the second detection will detect the cutscene letterbox
             // we will then apply a black bar matching the inner cutscene to crop the rendered blur effect
-            //m_detectInner.Detect(m_immediate.Get(), m_gameTexture);
+            m_detectInner.Detect(m_immediate.Get(), m_gameTexture);
         }
         if (m_detectionTimer.HasElapsed(m_settings.autoDetectionTime))
         {

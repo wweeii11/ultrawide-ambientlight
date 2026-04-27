@@ -2,6 +2,7 @@
 
 #include "windows.h"
 #include "d3d11.h"
+#include "d3d11_1.h"
 #include "dxgi1_2.h"
 #include "dxgi1_3.h"
 #include "wrl/client.h"
@@ -53,7 +54,7 @@ struct BlackBar
             && position == other.position;
     }
 
-    D3D11_BOX GetBox() const
+    D3D11_BOX toBox() const
     {
         UINT clampH = min(height, parentHeight);
         UINT clampW = min(width, parentWidth);
@@ -88,6 +89,17 @@ struct BlackBar
             break;
         }
         return box;
+    }
+
+    D3D11_RECT toRect() const
+    {
+        D3D11_BOX box = toBox();
+        D3D11_RECT rect = {};
+        rect.left = box.left;
+        rect.top = box.top;
+        rect.right = box.right;
+        rect.bottom = box.bottom;
+        return rect;
     }
 };
 
