@@ -1,7 +1,5 @@
 #pragma once
 
-#define UNICODE
-
 #include "common.h"
 #include "ambientlight.h"
 

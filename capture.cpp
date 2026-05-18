@@ -10,10 +10,12 @@ DesktopCapture::~DesktopCapture()
 {
 }
 
-HRESULT DesktopCapture::Initialize(ComPtr<ID3D11Device> device)
+HRESULT DesktopCapture::Initialize(ComPtr<ID3D11Device> device, HMONITOR monitor)
 {
     m_device = device;
     m_device->GetImmediateContext(&m_context);
+
+    m_monitor = monitor;
 
     ComPtr<IDXGIDevice> dxgiDevice;
     HRESULT hr = m_device.As(&dxgiDevice);
@@ -24,7 +26,19 @@ HRESULT DesktopCapture::Initialize(ComPtr<ID3D11Device> device)
     RETURN_IF_FAILED(hr);
 
     ComPtr<IDXGIOutput> dxgiOutput;
-    hr = dxgiAdapter->EnumOutputs(0, &dxgiOutput);
+    UINT outputIndex = 0;
+    while (dxgiAdapter->EnumOutputs(outputIndex, dxgiOutput.ReleaseAndGetAddressOf()) != DXGI_ERROR_NOT_FOUND) {
+        DXGI_OUTPUT_DESC desc;
+        if (SUCCEEDED(dxgiOutput->GetDesc(&desc))) {
+            if (desc.Monitor == monitor) {
+                dxgiAdapter = dxgiAdapter;
+                dxgiOutput = dxgiOutput;
+                break;
+            }
+        }
+        outputIndex++;
+    }
+    hr = dxgiOutput ? S_OK : E_FAIL;
     RETURN_IF_FAILED(hr);
 
     ComPtr<IDXGIOutput5> dxgiOutput5;
@@ -34,8 +48,8 @@ HRESULT DesktopCapture::Initialize(ComPtr<ID3D11Device> device)
     std::vector<DXGI_FORMAT> formats = {
         DXGI_FORMAT_B8G8R8A8_UNORM,
         DXGI_FORMAT_R10G10B10A2_UNORM,
-		DXGI_FORMAT_R16G16B16A16_FLOAT
-	};
+        DXGI_FORMAT_R16G16B16A16_FLOAT
+    };
 
     ComPtr<IDXGIOutput6> dxgiOutput6;
     hr = dxgiOutput.As(&dxgiOutput6);
@@ -50,8 +64,8 @@ HRESULT DesktopCapture::Initialize(ComPtr<ID3D11Device> device)
 
         m_outputDesc1 = desc1;
     }
-    
-    hr = dxgiOutput5->DuplicateOutput1(m_device.Get(), 0, 3, formats.data(), & m_duplication);
+
+    hr = dxgiOutput5->DuplicateOutput1(m_device.Get(), 0, 3, formats.data(), &m_duplication);
     RETURN_IF_FAILED(hr);
 
     return hr;
@@ -62,7 +76,7 @@ HRESULT DesktopCapture::Capture()
     HRESULT hr = S_OK;
     if (!m_duplication)
     {
-        Initialize(m_device);
+        Initialize(m_device, m_monitor);
     }
     if (!m_desktopTexture && m_duplication)
     {

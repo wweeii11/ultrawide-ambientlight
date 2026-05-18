@@ -82,6 +82,13 @@ LRESULT AmbientLight::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
     return UiWndProc(hwnd, message, wParam, lParam);
 }
 
+RECT AmbientLight::GetPresentRect()
+{
+    RefreshDisplays();
+    ReadSettings(m_settings);
+    return GetDisplayRect(m_settings.display);
+}
+
 void AmbientLight::UpdateSettings()
 {
     ValidateSettings();
@@ -141,11 +148,6 @@ void AmbientLight::UpdateSettings()
 
 void AmbientLight::ValidateSettings()
 {
-    if (!m_settings.loaded)
-    {
-        ReadSettings(m_settings);
-    }
-
     if (m_settings.loaded && m_settings.useAutoDetection)
     {
         m_blackBars = m_detection.GetDetectedBars();
@@ -208,6 +210,13 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 {
     m_hwnd = hwnd;
 
+    if (!m_settings.loaded)
+    {
+        ReadSettings(m_settings);
+    }
+
+    m_resetUiPosition = true;
+
     QueryPerformanceFrequency((LARGE_INTEGER*)&m_perfFreq);
     timeBeginPeriod(1);
 
@@ -236,7 +245,8 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
     m_windowWidth = RECT_WIDTH(windowRect);
     m_windowHeight = RECT_HEIGHT(windowRect);
 
-    hr = m_capture.Initialize(m_device);
+    HMONITOR monitor = GetDisplayMonitor(m_settings.display);
+    hr = m_capture.Initialize(m_device, monitor);
 
     // create swap chain
     DXGI_SWAP_CHAIN_DESC1 scd = {};
@@ -558,8 +568,10 @@ void AmbientLight::RenderConfig()
     if (!m_showConfigWindow)
         return;
 
-    bool open = RenderUI(m_settings, m_gameWidth, m_gameHeight);
+    bool open = RenderUI(m_hwnd, m_settings, m_gameWidth, m_gameHeight, m_resetUiPosition);
     ShowConfigWindow(open);
+
+    m_resetUiPosition = false;
 }
 
 void AmbientLight::RenderBackBuffer()

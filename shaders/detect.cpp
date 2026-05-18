@@ -188,6 +188,8 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     HRESULT hr = S_OK;
 
     D3D11_TEXTURE2D_DESC target_desc = {};
+    if (!target.GetTexture())
+        return E_INVALIDARG;
     target.GetTexture()->GetDesc(&target_desc);
 
     // Set the shader

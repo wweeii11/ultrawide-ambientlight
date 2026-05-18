@@ -56,7 +56,7 @@ fs::path GetDataPath()
         CoTaskMemFree(szPath); // Free the memory allocated by Windows
 
         fs::path appFolder = localAppData / APP_SUBFOLDER;
-        
+
         // Create directory if it doesn't exist
         if (!fs::exists(appFolder)) {
             fs::create_directories(appFolder);
@@ -227,6 +227,9 @@ bool ReadSettings(AppSettings& settings)
     float uiScale = DEFAULT_UI_SCALE;
     inipp::get_value(ini.sections["UI"], "UIScale", uiScale);
 
+    int display = DEFAULT_DISPLAY;
+    inipp::get_value(ini.sections["Game"], "Display", display);
+
     settings.loaded = true;
     settings.blurPasses = blur;
     settings.blurSamples = blurSamples;
@@ -252,7 +255,7 @@ bool ReadSettings(AppSettings& settings)
     settings.autoDetectionReservedWidth = autoDetectionReservedWidth;
     settings.autoDetectionReservedHeight = autoDetectionReservedHeight;
     settings.uiScale = uiScale;
-    
+
     std::string currentRes = "";
     inipp::get_value(ini.sections["Game"], "Resolution", currentRes);
 
@@ -312,6 +315,13 @@ bool ReadSettings(AppSettings& settings)
         settings.resolutions.available.push_back(rs);
     }
 
+    settings.display = display;
+    auto displays = GetAvailableDisplays();
+    if (settings.display < 0 || settings.display >= displays.size())
+    {
+        settings.display = 0;
+    }
+
     return true;
 }
 
@@ -323,6 +333,7 @@ void SaveSettings(AppSettings& settings)
     ini.parse(is);
     ini.strip_trailing_comments();
 
+    ini.sections["Game"]["Display"] = std::to_string(settings.display);
     ini.sections["Game"]["Resolution"] = settings.resolutions.current;
     ini.sections["Game"]["BlurStrength"] = std::to_string(settings.blurPasses);
     ini.sections["Game"]["BlurSamples"] = std::to_string(settings.blurSamples);
@@ -361,4 +372,79 @@ void SaveSettings(AppSettings& settings)
     std::ofstream os(GetCurrentConfigFilePath());
     ini.generate(os);
     os.close();
+}
+
+BOOL CALLBACK BuildMonitorListCallback(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
+    auto* monitorList = reinterpret_cast<std::vector<AvailableMonitor>*>(dwData);
+
+    // 1. Get monitor geometry and system name
+    MONITORINFOEX mi;
+    mi.cbSize = sizeof(MONITORINFOEX);
+
+    if (GetMonitorInfo(hMonitor, &mi)) {
+        AvailableMonitor info;
+        info.id = static_cast<int>(monitorList->size());
+        info.device = mi.szDevice;
+        info.rect = mi.rcMonitor;
+        info.width = mi.rcMonitor.right - mi.rcMonitor.left;
+        info.height = mi.rcMonitor.bottom - mi.rcMonitor.top;
+        info.isPrimary = (mi.dwFlags & MONITORINFOF_PRIMARY) != 0;
+        info.monitor = hMonitor;
+
+        // 2. Fetch the human-readable driver name for the UI
+        DISPLAY_DEVICE dd;
+        dd.cb = sizeof(dd);
+        // Passing mi.szDevice asks Windows for information about the monitor attached to that display path
+        if (EnumDisplayDevices(mi.szDevice, 0, &dd, 0)) {
+            info.friendlyName = dd.DeviceString;
+        }
+        else {
+            info.friendlyName = L"Unknown Monitor";
+        }
+
+        monitorList->push_back(info);
+    }
+
+    return TRUE; // Continue enumerating next monitor
+}
+
+std::vector<AvailableMonitor> monitorList;
+
+void RefreshDisplays()
+{
+    monitorList.clear();
+    EnumDisplayMonitors(NULL, NULL, BuildMonitorListCallback, reinterpret_cast<LPARAM>(&monitorList));
+}
+
+std::vector<AvailableMonitor> GetAvailableDisplays()
+{
+    return monitorList;
+}
+
+RECT GetDisplayRect(int display)
+{
+    if (monitorList.empty())
+    {
+        RECT desktopRect = { 0,0,0,0 };
+        GetWindowRect(GetDesktopWindow(), &desktopRect);
+        return desktopRect;
+    }
+    if (display < 0 || display >= monitorList.size())
+    {
+        display = 0;
+    }
+    return monitorList[display].rect;
+}
+
+HMONITOR GetDisplayMonitor(int display)
+{
+    if (monitorList.empty())
+    {
+        return MonitorFromWindow(GetDesktopWindow(), MONITOR_DEFAULTTOPRIMARY);
+    }
+    if (display < 0 || display >= monitorList.size())
+    {
+        display = 0;
+    }
+    return monitorList[display].monitor;
 }

@@ -22,9 +22,9 @@ void PresentWindow::FindAndShow()
             {
                 ShowWindow(hwnd, SW_SHOWNORMAL);
                 SetForegroundWindow(hwnd);
-                
+
                 SendMessage(hwnd, WM_TOGGLE_CONFIG_WINDOW, 1, 0);
-                
+
                 return FALSE; // stop enumeration
             }
             return TRUE; // continue enumeration
@@ -123,19 +123,16 @@ LRESULT CALLBACK PresentWindow::WndProc(HWND hwnd, UINT message, WPARAM wParam, 
         LPCREATESTRUCT pCreateStruct = reinterpret_cast<LPCREATESTRUCT>(lParam);
         SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pCreateStruct->lpCreateParams));
 
-        pRender = reinterpret_cast<AmbientLight*>(pCreateStruct->lpCreateParams);
-        if (pRender)
-        {
-            pRender->Initialize(hwnd);
-        }
+        PostMessage(hwnd, WM_DISPLAYCHANGE, 0, 0);
     }
     return 0;
 
     case WM_DISPLAYCHANGE:
     {
-        RECT desktopRect;
-        GetWindowRect(GetDesktopWindow(), &desktopRect);
-        SetWindowPos(hwnd, nullptr, 0, 0, desktopRect.right, desktopRect.bottom, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        RECT desktopRect = pRender->GetPresentRect();
+        SetWindowPos(hwnd, nullptr, desktopRect.left, desktopRect.top,
+            desktopRect.right - desktopRect.left, desktopRect.bottom - desktopRect.top,
+            SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
         pRender->Initialize(hwnd);
     }
     return 0;

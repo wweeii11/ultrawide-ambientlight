@@ -11,6 +11,8 @@ endif()
 
 project ("ambientlight")
 
+add_compile_definitions(UNICODE _UNICODE)
+
 # compile shaders
 find_program(FXC fxc DOC "fx shader compiler")
 if ("${FXC}" STREQUAL "FXC-NOTFOUND")

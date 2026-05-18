@@ -21,12 +21,15 @@ public:
 
     LRESULT WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 
+    RECT GetPresentRect();
 private:
     AppSettings m_settings;
     void UpdateSettings();
     void ValidateSettings();
 
     HWND m_hwnd;
+    bool m_resetUiPosition;
+
     ComPtr<ID3D11Device> m_device;
     ComPtr<ID3D11DeviceContext> m_immediate;
     ComPtr<ID3D11DeviceContext> m_deferred;

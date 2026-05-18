@@ -10,7 +10,7 @@ class DesktopCapture
 public:
     DesktopCapture();
     ~DesktopCapture();
-    HRESULT Initialize(ComPtr<ID3D11Device> device);
+    HRESULT Initialize(ComPtr<ID3D11Device> device, HMONITOR monitor);
     HRESULT Capture();
     HRESULT ReleaseFrame();
 
@@ -27,6 +27,7 @@ public:
     DXGI_OUTPUT_DESC1 GetOutputDesc1() { return m_outputDesc1; }
 private:
     ComPtr<ID3D11Device> m_device;
+    HMONITOR m_monitor;
     ComPtr<ID3D11DeviceContext> m_context;
     ComPtr<IDXGIOutputDuplication> m_duplication;
 
