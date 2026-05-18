@@ -2,6 +2,7 @@
 
 #include "windows.h"
 #include "d3d11.h"
+#include "d3d11_1.h"
 #include "dxgi1_2.h"
 #include "dxgi1_3.h"
 #include "wrl/client.h"
@@ -53,7 +54,7 @@ struct BlackBar
             && position == other.position;
     }
 
-    D3D11_BOX GetBox() const
+    D3D11_BOX toBox() const
     {
         UINT clampH = min(height, parentHeight);
         UINT clampW = min(width, parentWidth);
@@ -88,6 +89,17 @@ struct BlackBar
             break;
         }
         return box;
+    }
+
+    D3D11_RECT toRect() const
+    {
+        D3D11_BOX box = toBox();
+        D3D11_RECT rect = {};
+        rect.left = box.left;
+        rect.top = box.top;
+        rect.right = box.right;
+        rect.bottom = box.bottom;
+        return rect;
     }
 };
 
@@ -140,7 +152,7 @@ public:
         m_rtv = nullptr;
     }
 
-    HRESULT RecreateTexture(ID3D11Device* device, DXGI_FORMAT format, UINT width, UINT height)
+    HRESULT RecreateTexture(ID3D11Device* device, DXGI_FORMAT format, UINT width, UINT height, UINT mipLevels = 1, bool generateMips = false)
     {
         HRESULT hr = S_OK;
 
@@ -150,7 +162,9 @@ public:
             D3D11_TEXTURE2D_DESC desc;
             texture->GetDesc(&desc);
 
-            if (desc.Format != format || desc.Width != width || desc.Height != height)
+            bool existingHasGenerateMips = (desc.MiscFlags & D3D11_RESOURCE_MISC_GENERATE_MIPS) != 0;
+            if (desc.Format != format || desc.Width != width || desc.Height != height || 
+                (mipLevels != 0 && desc.MipLevels != mipLevels) || existingHasGenerateMips != generateMips)
             {
                 Clear();
             }
@@ -167,7 +181,7 @@ public:
             D3D11_TEXTURE2D_DESC desc = {};
             desc.Width = width;
             desc.Height = height;
-            desc.MipLevels = 1;
+            desc.MipLevels = mipLevels;
             desc.ArraySize = 1;
             desc.Format = format;
             desc.SampleDesc.Count = 1;
@@ -175,7 +189,7 @@ public:
             desc.Usage = D3D11_USAGE_DEFAULT;
             desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET | D3D11_BIND_UNORDERED_ACCESS;
             desc.CPUAccessFlags = 0;
-            desc.MiscFlags = 0;
+            desc.MiscFlags = generateMips ? D3D11_RESOURCE_MISC_GENERATE_MIPS : 0;
             hr = device->CreateTexture2D(&desc, nullptr, &texture);
             if (SUCCEEDED(hr))
             {
@@ -261,4 +275,23 @@ struct ScopedPerfTimer {
     PerfTimer& timer;
     ScopedPerfTimer(PerfTimer& t) : timer(t) { timer.Start(); }
     ~ScopedPerfTimer() { timer.Stop(); }
+};
+
+__declspec(align(16))
+class ElapsedTimer {
+public:
+    ElapsedTimer() {
+        m_last = 0;
+    }
+
+    bool HasElapsed(ULONGLONG intervalMs) {
+        ULONGLONG now = GetTickCount64();
+        if (m_last == 0 || (now - m_last) >= intervalMs) {
+            m_last = now;
+            return true;
+        }
+        return false;
+    }
+private:
+    ULONGLONG m_last;
 };

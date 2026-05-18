@@ -8,7 +8,11 @@ cbuffer VignetteParams : register(b0)
     float4 vignetteColor; // Color of the vignette (usually black)
 };
 
+#ifdef USE_UNORM
 RWTexture2D<unorm float4> outputTexture : register(u0);
+#else
+RWTexture2D<float4> outputTexture : register(u0);
+#endif
 
 [numthreads(16, 16, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)

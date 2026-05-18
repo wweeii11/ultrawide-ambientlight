@@ -1,5 +1,10 @@
 Texture2D<float> lumaTexture : register(t0);
+
+#ifdef USE_UNORM
 RWTexture2D<unorm float4> outputTexture : register(u0);
+#else
+RWTexture2D<float4> outputTexture : register(u0);
+#endif
 
 // sample the luma texture and use it as an alpha mask
 // for luma < 0.5, output original alpha, otherwise output 0.0 alpha
@@ -16,7 +21,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     lumaTexture.Load(int3(DTid.xy, 0));
     float luma = lumaTexture.Load(int3(DTid.xy, 0));
     float4 color = outputTexture.Load(int3(DTid.xy, 0));
-    float alpha = luma < 0.1 ? 1.0 : (1.0 - luma) / 4;
+    float alpha = luma < 0.01 ? 1.0 : (1.0 - luma) / 4;
     color = color * alpha;
     outputTexture[DTid.xy] = color;
 

@@ -1,13 +1,19 @@
 #include "detect.h"
 #include "d3dcompiler.h"
-#include "luma_bin.h"
-#include "mask_bin.h"
+#include "luma_mainSDR_bin.h"
+#include "luma_mainSCRGB_bin.h"
+#include "luma_mainHDR10_bin.h"
+#include "mask_main_bin.h"
+#include "mask_mainUNorm_bin.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "dxgi.lib")
 
 using namespace DirectX;
+
+#define SDR_LUMA_THRESHOLD 0.01f
+#define HDR10_LUMA_THRESHOLD 0.0001f
 
 Detection::Detection()
 {
@@ -31,7 +37,7 @@ static void CreateLumaMaskAndStaging(
     textureDesc.Height = height;
     textureDesc.MipLevels = 1;
     textureDesc.ArraySize = 1;
-    textureDesc.Format = DXGI_FORMAT_R8_UNORM;
+    textureDesc.Format = DXGI_FORMAT_R32_FLOAT;
     textureDesc.SampleDesc.Count = 1;
     textureDesc.SampleDesc.Quality = 0;
     textureDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -50,13 +56,16 @@ static void CreateLumaMaskAndStaging(
 HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context,
     UINT width, UINT height,
     float blackThreshold, float blackRatio, bool symmetricBars,
-    UINT reservedWidth, UINT reservedHeight)
+    UINT reservedWidth, UINT reservedHeight,
+    DXGI_COLOR_SPACE_TYPE colorSpace)
 {
     HRESULT hr = S_OK;
     if (m_device != device)
     {
         m_lumaShader = nullptr;
-        m_maskShader = nullptr;
+        m_lumaHDR10Shader = nullptr;
+        m_lumaSCRGBShader = nullptr;
+        m_lumaMaskShader = nullptr;
         m_width = 0;
         m_height = 0;
     }
@@ -64,14 +73,24 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
     m_device = device;
     m_context = context;
 
-    if (!m_lumaShader || !m_maskShader)
+    if (!m_lumaShader || !m_lumaMaskShader || !m_lumaHDR10Shader || !m_lumaSCRGBShader || !m_lumaMaskShaderUNorm)
     {
         // create compute shader
-        hr = device->CreateComputeShader(g_luma, sizeof(g_luma), nullptr, &m_lumaShader);
+        hr = device->CreateComputeShader(g_luma_mainSDR, sizeof(g_luma_mainSDR), nullptr, &m_lumaShader);
         RETURN_IF_FAILED(hr);
 
-        hr = device->CreateComputeShader(g_mask, sizeof(g_mask), nullptr, &m_maskShader);
+        hr = device->CreateComputeShader(g_luma_mainHDR10, sizeof(g_luma_mainHDR10), nullptr, &m_lumaHDR10Shader);
         RETURN_IF_FAILED(hr);
+
+        hr = device->CreateComputeShader(g_luma_mainSCRGB, sizeof(g_luma_mainSCRGB), nullptr, &m_lumaSCRGBShader);
+        RETURN_IF_FAILED(hr);
+
+        hr = device->CreateComputeShader(g_mask_main, sizeof(g_mask_main), nullptr, &m_lumaMaskShader);
+        RETURN_IF_FAILED(hr);
+
+        hr = device->CreateComputeShader(g_mask_mainUNorm, sizeof(g_mask_mainUNorm), nullptr, &m_lumaMaskShaderUNorm);
+        RETURN_IF_FAILED(hr);
+        
     }
 
 
@@ -92,17 +111,23 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
         }
     }
 
+    if (m_width != width || m_height != height)
+    {
+        m_topBar = 0;
+        m_bottomBar = m_height;
+        m_leftBar = 0;
+        m_rightBar = m_width;
+        m_detectWidth = m_width;
+        m_detectHeight = m_height;
+    }
     m_width = width;
     m_height = height;
+
     m_blackThreshold = blackThreshold;
     m_blackRatio = blackRatio;
     m_symmetricBars = symmetricBars;
-    m_topBar = 0;
-    m_bottomBar = m_height;
-    m_leftBar = 0;
-    m_rightBar = m_width;
-    m_detectWidth = m_width;
-    m_detectHeight = m_height;
+
+    m_colorSpace = colorSpace;
 
     m_reservedWidth = reservedWidth;
     m_reservedHeight = reservedHeight;
@@ -124,15 +149,76 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
     return hr;
 }
 
+inline bool isLineMostlyBlack(const float* data, UINT length, UINT stride, float blackThreshold, float blackRatio, float varianceThreshold)
+{
+    int darkPixelCount = 0;
+    float sum = 0.0f;
+    float sumSq = 0.0f;
+
+    for (UINT i = 0; i < length; ++i)
+    {
+        float pixel = data[i * stride];
+        if (pixel <= blackThreshold)
+        {
+            ++darkPixelCount;
+            sum += pixel;
+            sumSq += pixel * pixel;
+        }
+    }
+
+    if (darkPixelCount == 0)
+        return false;
+
+    float darkRatio = (float)darkPixelCount / (float)length;
+    if (darkRatio < blackRatio)
+        return false;
+
+    // Variance of the dark pixels only: Var = E[x^2] - E[x]^2
+    float n = (float)darkPixelCount;
+    float mean = sum / n;
+    float variance = (sumSq / n) - (mean * mean);
+
+    // True black (bars/chrome) has near-zero variance — all pixels clump around 0
+    // Dark HDR content has measurable variance even if all pixels are below threshold
+    return (variance <= varianceThreshold);
+}
+
 HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
 {
     HRESULT hr = S_OK;
 
     D3D11_TEXTURE2D_DESC target_desc = {};
+    if (!target.GetTexture())
+        return E_INVALIDARG;
     target.GetTexture()->GetDesc(&target_desc);
 
     // Set the shader
-    context->CSSetShader(m_lumaShader.Get(), nullptr, 0);
+    switch (target_desc.Format)
+    {
+    case DXGI_FORMAT_R10G10B10A2_UNORM:
+        if (m_colorSpace == DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709)
+        {
+            context->CSSetShader(m_lumaShader.Get(), nullptr, 0);
+        }
+        else
+        {
+            context->CSSetShader(m_lumaHDR10Shader.Get(), nullptr, 0);
+        }
+        break;
+    case DXGI_FORMAT_R16G16B16A16_FLOAT:
+        if (m_colorSpace == DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709)
+        {
+            context->CSSetShader(m_lumaSCRGBShader.Get(), nullptr, 0);
+        }
+        else
+        {
+            context->CSSetShader(m_lumaHDR10Shader.Get(), nullptr, 0);
+        }
+        break;
+    default:
+        context->CSSetShader(m_lumaShader.Get(), nullptr, 0);
+        break;
+    }
 
     // Set the input texture
     ID3D11ShaderResourceView* srv = target.GetSRV();
@@ -163,25 +249,32 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     D3D11_MAPPED_SUBRESOURCE mappedLuma = {};
     context->Map(m_lumaStaging.Get(), 0, D3D11_MAP_READ, 0, &mappedLuma);
 
-    const uint8_t* luma = reinterpret_cast<const uint8_t*>(mappedLuma.pData);
-    const UINT pitch = mappedLuma.RowPitch;
+    const float* luma = reinterpret_cast<const float*>(mappedLuma.pData);
+    const UINT pitch = mappedLuma.RowPitch / sizeof(float);
 
-    const uint8_t uBlackThreshold = uint8_t(m_blackThreshold * 255.0f);
-
-    UINT minBlackCount = UINT(m_blackRatio * float(m_width));
     // minimum detection is 16px
     UINT minBarSize = 16;
 
+    // maximum threshold for black detection
+    float maxBlackThreshold = SDR_LUMA_THRESHOLD;
+    float blackVariance = 1e-6f;
+    // Adjust threshold for HDR10 PQ content
+    switch (m_colorSpace)
+    {
+        case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
+            maxBlackThreshold = HDR10_LUMA_THRESHOLD;
+            blackVariance = 1e-10f;
+            break;
+    }
+
+    // m_blackThreshold is user setting between 0.0 and 1.0
+    float blackThreshold = m_blackThreshold * maxBlackThreshold;
+
+    
     m_topBar = 0;
     for (UINT y = 0; y < UINT(m_height); ++y) {
-        UINT blackCount = 0;
-        const uint8_t* row = luma + y * pitch;
-        for (UINT x = 0; x < UINT(m_width); ++x) {
-            if (row[x] <= uBlackThreshold) {
-                blackCount++;
-            }
-        }
-        if (blackCount < minBlackCount)
+        const float* row = luma + y * pitch;
+        if (!isLineMostlyBlack(row, m_width, 1, blackThreshold, m_blackRatio, blackVariance))
         {
             m_topBar = y;
             break;
@@ -191,14 +284,8 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
 
     m_bottomBar = 0;
     for (UINT y = m_height - 1; y >= 0; --y) {
-        UINT blackCount = 0;
-        const uint8_t* row = luma + y * pitch;
-        for (UINT x = 0; x < UINT(m_width); ++x) {
-            if (row[x] <= uBlackThreshold) {
-                blackCount++;
-            }
-        }
-        if (blackCount < minBlackCount)
+        const float* row = luma + y * pitch;
+        if (!isLineMostlyBlack(row, m_width, 1, blackThreshold, m_blackRatio, blackVariance))
         {
             m_bottomBar = (m_height - 1) - y;
             break;
@@ -208,17 +295,10 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     }
     m_bottomBar = m_bottomBar < minBarSize ? 0 : m_bottomBar;
 
-    minBlackCount = UINT(m_blackRatio * float(m_height));
     m_leftBar = 0;
     for (UINT x = 0; x < UINT(m_width); ++x) {
-        UINT blackCount = 0;
-        for (UINT y = 0; y < UINT(m_height); ++y) {
-            const uint8_t* row = luma + y * pitch;
-            if (row[x] <= uBlackThreshold) {
-                blackCount++;
-            }
-        }
-        if (blackCount < minBlackCount)
+        const float* start = luma + x;
+        if (!isLineMostlyBlack(start, m_height, m_width, blackThreshold, m_blackRatio, blackVariance))
         {
             m_leftBar = x;
             break;
@@ -228,14 +308,8 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
 
     m_rightBar = 0;
     for (UINT x = m_width - 1; x >= 0; --x) {
-        UINT blackCount = 0;
-        for (UINT y = 0; y < UINT(m_height); ++y) {
-            const uint8_t* row = luma + y * pitch;
-            if (row[x] <= uBlackThreshold) {
-                blackCount++;
-            }
-        }
-        if (blackCount < minBlackCount)
+        const float* start = luma + x;
+        if (!isLineMostlyBlack(start, m_height, m_width, blackThreshold, m_blackRatio, blackVariance))
         {
             m_rightBar = (m_width - 1) - x;
             break;
@@ -292,7 +366,7 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     return hr;
 }
 
-HRESULT Detection::RenderMask(ID3D11DeviceContext* context, TextureView target)
+HRESULT Detection::RenderLumaMask(ID3D11DeviceContext* context, TextureView target)
 {
     HRESULT hr = S_OK;
 
@@ -300,7 +374,14 @@ HRESULT Detection::RenderMask(ID3D11DeviceContext* context, TextureView target)
     target.GetTexture()->GetDesc(&target_desc);
 
     // Set the shader
-    context->CSSetShader(m_maskShader.Get(), nullptr, 0);
+    if (target_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT)
+    {
+        context->CSSetShader(m_lumaMaskShader.Get(), nullptr, 0); 
+    }
+    else
+    {
+        context->CSSetShader(m_lumaMaskShaderUNorm.Get(), nullptr, 0);
+    }
 
     // Set the input texture
     ID3D11ShaderResourceView* srv = m_luma.GetSRV();
@@ -322,30 +403,31 @@ HRESULT Detection::RenderMask(ID3D11DeviceContext* context, TextureView target)
     return hr;
 }
 
-std::vector<BlackBar> Detection::GetFixedBars(UINT gameWidth, UINT gameHeight)
+
+std::vector<BlackBar> Detection::GetFixedBars(UINT windowWidth, UINT windowHeight, UINT gameWidth, UINT gameHeight)
 {
     std::vector<BlackBar> ret;
 
     float aspect = (float)gameWidth / (float)gameHeight;
-    float windowAspect = (float)m_width / (float)m_height;
+    float windowAspect = (float)windowWidth / (float)windowHeight;
 
-    gameHeight = (UINT)m_height;
+    gameHeight = (UINT)windowHeight;
     gameWidth = (UINT)std::round((float)gameHeight * aspect);
 
-    if (gameWidth > m_width)
+    if (gameWidth > windowWidth)
     {
-        gameWidth = (UINT)m_width;
+        gameWidth = (UINT)windowWidth;
         gameHeight = (UINT)std::round((float)gameWidth / aspect);
     }
     
     if (aspect > windowAspect)
     {
-        UINT barHeight = (m_height - gameHeight) / 2;
+        UINT barHeight = (windowHeight - gameHeight) / 2;
         // letterbox
         BlackBar topBar = {};
-        topBar.parentWidth = m_width;
-        topBar.parentHeight = m_height;
-        topBar.width = m_width;
+        topBar.parentWidth = windowWidth;
+        topBar.parentHeight = windowHeight;
+        topBar.width = windowWidth;
         topBar.height = barHeight;
         topBar.position = Top;
 
@@ -358,13 +440,13 @@ std::vector<BlackBar> Detection::GetFixedBars(UINT gameWidth, UINT gameHeight)
     }
     else
     {
-        UINT barWidth = (m_width - gameWidth) / 2;
+        UINT barWidth = (windowWidth - gameWidth) / 2;
         // pillarbox
         BlackBar leftBar = {};
-        leftBar.parentWidth = m_width;
-        leftBar.parentHeight = m_height;
+        leftBar.parentWidth = windowWidth;
+        leftBar.parentHeight = windowHeight;
         leftBar.width = barWidth;
-        leftBar.height = m_height;
+        leftBar.height = windowHeight;
         leftBar.position = Left;
 
         BlackBar rightBar = leftBar;

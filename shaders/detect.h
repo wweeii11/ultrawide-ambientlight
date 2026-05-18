@@ -4,6 +4,7 @@
 #include "DirectXMath.h"
 #include <memory>
 #include <vector>
+#include "dxgi1_6.h"
 
 using namespace DirectX;
 
@@ -14,20 +15,24 @@ public:
     ~Detection();
 
     HRESULT Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context, UINT width, UINT height,
-        float blackThreshold, float blackRatio, bool symmetricBars, UINT reservedWidth, UINT reservedHeight);
+        float blackThreshold, float blackRatio, bool symmetricBars, UINT reservedWidth, UINT reservedHeight, DXGI_COLOR_SPACE_TYPE colorSpace);
 
     HRESULT Detect(ID3D11DeviceContext* context, TextureView target);
-    HRESULT RenderMask(ID3D11DeviceContext* context, TextureView target);
+    HRESULT RenderLumaMask(ID3D11DeviceContext* context, TextureView target);
 
     std::vector<BlackBar> GetDetectedBars();
-    std::vector<BlackBar> GetFixedBars(UINT gameWidth, UINT gameHeight);
+    static std::vector<BlackBar> GetFixedBars(UINT windowWidth, UINT windowHeight, UINT gameWidth, UINT gameHeight);
 
 private:
     ComPtr<ID3D11Device> m_device;
     ComPtr<ID3D11DeviceContext> m_context;
 
     ComPtr<ID3D11ComputeShader> m_lumaShader;
-    ComPtr<ID3D11ComputeShader> m_maskShader;
+    ComPtr<ID3D11ComputeShader> m_lumaHDR10Shader;
+    ComPtr<ID3D11ComputeShader> m_lumaSCRGBShader;
+
+    ComPtr<ID3D11ComputeShader> m_lumaMaskShader;
+    ComPtr<ID3D11ComputeShader> m_lumaMaskShaderUNorm;
 
     TextureView m_luma;
     ComPtr<ID3D11Texture2D> m_lumaStaging;
@@ -48,4 +53,6 @@ private:
 
     // detected non-black area
     UINT m_detectWidth, m_detectHeight;
+
+    DXGI_COLOR_SPACE_TYPE m_colorSpace;
 };

@@ -21,12 +21,15 @@ public:
 
     LRESULT WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 
+    RECT GetPresentRect();
 private:
     AppSettings m_settings;
     void UpdateSettings();
     void ValidateSettings();
 
     HWND m_hwnd;
+    bool m_resetUiPosition;
+
     ComPtr<ID3D11Device> m_device;
     ComPtr<ID3D11DeviceContext> m_immediate;
     ComPtr<ID3D11DeviceContext> m_deferred;
@@ -41,6 +44,9 @@ private:
     Copy m_copy;
     Vignette m_vignette;
     Detection m_detection;
+    ElapsedTimer m_detectionTimer;
+    Detection m_detectInner;
+    ElapsedTimer m_detectionInnerTimer;
 
     bool m_effectRendered;
     bool m_presented;
@@ -68,10 +74,9 @@ private:
     PerfTimer m_capturePerfTimer = { "capture" };
 
     TextureView m_gameTexture;
-    TextureView m_offscreen1;
-    TextureView m_offscreen2;
-    TextureView m_offscreen3;
-    //TextureView m_offscreen4;
+    TextureView m_downsampledTexture;
+    TextureView m_processedBlurTexture;
+    TextureView m_effectCanvasTexture;
 
     HRESULT CreateOffscreen(DXGI_FORMAT format);
 

@@ -16,6 +16,7 @@ private:
     ComPtr<ID3D11DeviceContext> m_context;
 
     ComPtr<ID3D11ComputeShader> m_shader;
+    ComPtr<ID3D11ComputeShader> m_shaderUNorm;
 
     ComPtr<ID3D11Buffer> m_params;
 };

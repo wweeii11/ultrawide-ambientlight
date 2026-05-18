@@ -1,6 +1,6 @@
 #include "blur.h"
 #include "d3dcompiler.h"
-#include "blur_bin.h"
+#include "blur_main_bin.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -129,7 +129,7 @@ HRESULT Blur::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext
 
     if (!m_shader)
     {
-        hr = device->CreateComputeShader(g_blur, sizeof(g_blur), nullptr, &m_shader);
+        hr = device->CreateComputeShader(g_blur_main, sizeof(g_blur_main), nullptr, &m_shader);
         RETURN_IF_FAILED(hr);
 
         D3D11_SAMPLER_DESC samplerDesc = {};

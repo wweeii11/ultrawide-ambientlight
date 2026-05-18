@@ -11,6 +11,8 @@ endif()
 
 project ("ambientlight")
 
+add_compile_definitions(UNICODE _UNICODE)
+
 # compile shaders
 find_program(FXC fxc DOC "fx shader compiler")
 if ("${FXC}" STREQUAL "FXC-NOTFOUND")
@@ -19,25 +21,39 @@ else()
 	message(STATUS "Found FXC: ${FXC}")
 endif()
 
-set(SHADERS
-	shaders/blur.hlsl
-	shaders/luma.hlsl
-	shaders/vignette.hlsl
-	shaders/copy.hlsl
-	shaders/mask.hlsl
-)
+# Define the function to handle individual shader compilation
+function(compile_shader_entry SHADER_FILE ENTRY_POINT VARIABLE_SUFFIX DEFINES)
+    get_filename_component(SHADER_NAME ${SHADER_FILE} NAME_WE)
+    
+    # Create a unique name for the file and the C++ variable
+    set(UNIQUE_NAME "${SHADER_NAME}_${VARIABLE_SUFFIX}")
+    set(SHADER_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/shaders/${UNIQUE_NAME}_bin.h")
 
-foreach(SHADER_FILE ${SHADERS})
-	get_filename_component(SHADER_NAME ${SHADER_FILE} NAME_WE)
-	set(SHADER_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/shaders/${SHADER_NAME}_bin.h")
-	add_custom_command(
-		OUTPUT ${SHADER_OUTPUT}
-		COMMAND fxc /T cs_5_0 /E main /Fh ${SHADER_OUTPUT} ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILE} /Vn g_${SHADER_NAME}
-		DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILE}
-		COMMENT "Compiling shader ${SHADER_FILE}"
-	)
-	list(APPEND GENERATED_SHADER_HEADERS ${SHADER_OUTPUT})
-endforeach()
+    # Prepare the /D flags
+    set(PREPROCESSOR_ARGS "")
+    foreach(DEF ${DEFINES})
+        list(APPEND PREPROCESSOR_ARGS "/D${DEF}")
+    endforeach()
+
+    add_custom_command(
+        OUTPUT ${SHADER_OUTPUT}
+        COMMAND fxc /T cs_5_0 /E ${ENTRY_POINT} ${PREPROCESSOR_ARGS} /Fh ${SHADER_OUTPUT} ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILE} /Vn g_${UNIQUE_NAME}
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILE}
+        COMMENT "Compiling ${SHADER_FILE} [Entry: ${ENTRY_POINT}] [Defines: ${DEFINES}] -> g_${UNIQUE_NAME}"
+    )
+
+    # Export the generated header path to the global list
+    set(GENERATED_SHADER_HEADERS ${GENERATED_SHADER_HEADERS} ${SHADER_OUTPUT} PARENT_SCOPE)
+endfunction()
+compile_shader_entry("shaders/blur.hlsl" "main" "main" "")
+compile_shader_entry("shaders/luma.hlsl" "mainSDR" "mainSDR" "")
+compile_shader_entry("shaders/luma.hlsl" "mainHDR10" "mainHDR10" "")
+compile_shader_entry("shaders/luma.hlsl" "mainSCRGB" "mainSCRGB" "")
+compile_shader_entry("shaders/copy.hlsl" "main" "main" "")
+compile_shader_entry("shaders/vignette.hlsl" "main" "main" "")
+compile_shader_entry("shaders/vignette.hlsl" "main" "mainUNorm" "USE_UNORM")
+compile_shader_entry("shaders/mask.hlsl" "main" "main" "")
+compile_shader_entry("shaders/mask.hlsl" "main" "mainUNorm" "USE_UNORM")
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/shaders)
 

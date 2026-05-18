@@ -30,6 +30,8 @@ D3D11_BOX GetMirroredBox(D3D11_BOX box, UINT width, UINT height)
     return mirrored;
 }
 
+
+
 AmbientLight::AmbientLight()
     : m_effectRendered(false),
     m_presented(false),
@@ -80,21 +82,31 @@ LRESULT AmbientLight::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
     return UiWndProc(hwnd, message, wParam, lParam);
 }
 
+RECT AmbientLight::GetPresentRect()
+{
+    RefreshDisplays();
+    ReadSettings(m_settings);
+    return GetDisplayRect(m_settings.display);
+}
+
 void AmbientLight::UpdateSettings()
 {
     ValidateSettings();
 
     if (m_hwnd)
     {
-        m_blurPre.Initialize(m_device,
-            m_deferred,
-            m_gameWidth,
-            m_gameHeight,
-            m_settings.blurSamples);
+        //m_blurPre.Initialize(m_device,
+        //    m_deferred,
+        //    m_gameWidth,
+        //    m_gameHeight,
+        //    m_settings.blurSamples);
+
+        UINT mipWidth = max(1u, m_gameWidth >> m_settings.mipmapLevels);
+        UINT mipHeight = max(1u, m_gameHeight >> m_settings.mipmapLevels);
         m_blurDownscale.Initialize(m_device,
             m_deferred,
-            m_settings.blurDownscale,
-            m_settings.blurDownscale,
+            mipWidth,
+            mipHeight,
             m_settings.blurSamples);
 
         float windowAspect = (float)m_windowWidth / (float)m_windowHeight;
@@ -105,8 +117,9 @@ void AmbientLight::UpdateSettings()
             m_settings.vignetteSmoothness,
             windowAspect);
 
-        CreateOffscreen(DXGI_FORMAT_B8G8R8A8_UNORM);
+        CreateOffscreen(m_capture.GetDesktopDesc().ModeDesc.Format/*DXGI_FORMAT_B8G8R8A8_UNORM*/);
 
+        DXGI_COLOR_SPACE_TYPE colorSpace = m_capture.GetOutputDesc1().ColorSpace;
         m_detection.Initialize(m_device,
             m_immediate,
             m_windowWidth,
@@ -115,8 +128,19 @@ void AmbientLight::UpdateSettings()
             m_settings.autoDetectionBlackRatio,
             m_settings.autoDetectionSymmetricBars,
             m_settings.autoDetectionReservedArea ? m_settings.autoDetectionReservedWidth : 0,
-            m_settings.autoDetectionReservedArea ? m_settings.autoDetectionReservedHeight : 0);
+            m_settings.autoDetectionReservedArea ? m_settings.autoDetectionReservedHeight : 0,
+            colorSpace);
 
+        m_detectInner.Initialize(m_device,
+            m_deferred,
+            m_gameWidth,
+            m_gameHeight,
+            m_settings.autoDetectionBrightnessThreshold,
+            m_settings.autoDetectionBlackRatio,
+            false,
+            0,
+            0,
+            colorSpace);
 
         InitUI(m_hwnd, m_device.Get(), m_deferred.Get(), m_settings);
     }
@@ -124,11 +148,6 @@ void AmbientLight::UpdateSettings()
 
 void AmbientLight::ValidateSettings()
 {
-    if (!m_settings.loaded)
-    {
-        ReadSettings(m_settings);
-    }
-
     if (m_settings.loaded && m_settings.useAutoDetection)
     {
         m_blackBars = m_detection.GetDetectedBars();
@@ -152,7 +171,7 @@ void AmbientLight::ValidateSettings()
             height = 9;
         }
 
-        m_blackBars = m_detection.GetFixedBars(width, height);
+        m_blackBars = m_detection.GetFixedBars(m_windowWidth, m_windowHeight, width, height);
     }
 
 
@@ -170,7 +189,7 @@ void AmbientLight::ValidateSettings()
 
     // Validate blur settings
     m_settings.blurPasses = std::clamp(m_settings.blurPasses, 0u, 128u);
-    m_settings.blurDownscale = std::clamp(m_settings.blurDownscale / 2 * 2, 16u, 1024u);
+    m_settings.mipmapLevels = std::clamp(m_settings.mipmapLevels, 0u, 12u);
     m_settings.blurSamples = std::clamp(m_settings.blurSamples / 2 * 2 + 1, 1u, 63u);
 
     // Validate vignette settings
@@ -184,12 +203,19 @@ void AmbientLight::ValidateSettings()
 
     // Validate zoom
     m_settings.zoom = std::clamp(m_settings.zoom, 0u, 16u);
-    m_effectZoom = m_settings.zoom * 16;
+    m_effectZoom = m_settings.zoom * 4;
 }
 
 HRESULT AmbientLight::Initialize(HWND hwnd)
 {
     m_hwnd = hwnd;
+
+    if (!m_settings.loaded)
+    {
+        ReadSettings(m_settings);
+    }
+
+    m_resetUiPosition = true;
 
     QueryPerformanceFrequency((LARGE_INTEGER*)&m_perfFreq);
     timeBeginPeriod(1);
@@ -219,11 +245,14 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
     m_windowWidth = RECT_WIDTH(windowRect);
     m_windowHeight = RECT_HEIGHT(windowRect);
 
+    HMONITOR monitor = GetDisplayMonitor(m_settings.display);
+    hr = m_capture.Initialize(m_device, monitor);
+
     // create swap chain
     DXGI_SWAP_CHAIN_DESC1 scd = {};
     scd.Width = m_windowWidth;
     scd.Height = m_windowHeight;
-    scd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    scd.Format = m_capture.GetDesktopDesc().ModeDesc.Format/*DXGI_FORMAT_B8G8R8A8_UNORM*/;
     scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scd.BufferCount = 2;
     scd.SampleDesc.Count = 1;
@@ -233,6 +262,14 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
     scd.Scaling = DXGI_SCALING_STRETCH;
 
     hr = dxgiFactory2->CreateSwapChainForComposition(m_device.Get(), &scd, nullptr, &m_swapchain);
+    char buffer[256];
+    sprintf_s(buffer, "Swapchain created: %dx%d, format: %s\n", scd.Width, scd.Height,
+        scd.Format == DXGI_FORMAT_B8G8R8A8_UNORM ? "BGRA8"
+        : scd.Format == DXGI_FORMAT_R10G10B10A2_UNORM ? "RGBA10"
+        : scd.Format == DXGI_FORMAT_R16G16B16A16_FLOAT ? "RGBAF16"
+        : "Unknown"
+    );
+    OutputDebugStringA(buffer);
     RETURN_IF_FAILED(hr);
 
     hr = DCompositionCreateDevice(dxgiDevice.Get(), __uuidof(IDCompositionDevice), &m_dcompDevice);
@@ -253,14 +290,12 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
     hr = m_dcompDevice->Commit();
     RETURN_IF_FAILED(hr);
 
-    hr = m_capture.Initialize(m_device);
-
     m_copy.Initialize(m_device, m_deferred.Get());
 
     m_gameTexture.Clear();
-    m_offscreen1.Clear();
-    m_offscreen2.Clear();
-    m_offscreen3.Clear();
+    m_downsampledTexture.Clear();
+    m_processedBlurTexture.Clear();
+    m_effectCanvasTexture.Clear();
 
     UpdateSettings();
 
@@ -270,20 +305,21 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 {
     HRESULT hr = S_OK;
-    m_gameTexture.RecreateTexture(m_device.Get(), format, m_gameWidth, m_gameHeight);
+    // Create with full mip chain (0) and enable mip generation support
+    m_gameTexture.RecreateTexture(m_device.Get(), format, m_gameWidth, m_gameHeight, 0, true);
 
-    float aspect = (float)m_gameWidth / (float)m_gameHeight;
+    // m_downsampledTexture now matches the selected mip level size
+    UINT mipWidth = max(1u, m_gameWidth >> m_settings.mipmapLevels);
+    UINT mipHeight = max(1u, m_gameHeight >> m_settings.mipmapLevels);
+    m_downsampledTexture.RecreateTexture(m_device.Get(), format,
+        mipWidth,
+        mipHeight);
 
-    UINT downscale = m_settings.blurDownscale;
-    m_offscreen1.RecreateTexture(m_device.Get(), format,
-        downscale,
-        downscale);
+    m_processedBlurTexture.RecreateTexture(m_device.Get(), format,
+        m_gameWidth,
+        m_gameHeight);
 
-    m_offscreen2.RecreateTexture(m_device.Get(), format,
-        m_gameWidth + m_effectZoom * 2,
-        m_gameHeight + m_effectZoom * 2);
-
-    m_offscreen3.RecreateTexture(m_device.Get(), format,
+    m_effectCanvasTexture.RecreateTexture(m_device.Get(), format,
         m_windowWidth,
         m_windowHeight);
 
@@ -317,7 +353,7 @@ void AmbientLight::Render()
         OutputDebugStringA(buffer);
     }
 #endif
-    
+
     ScopedPerfTimer frameTimer(m_framePerfTimer);
 
     {
@@ -401,23 +437,79 @@ bool AmbientLight::RenderEffects()
 
     if (IS_BOX_EMPTY(game_box))
         return false;
+    DXGI_FORMAT dupFormat = m_capture.GetDesktopDesc().ModeDesc.Format;
+    D3D11_TEXTURE2D_DESC gameDesc = {};
+    m_gameTexture.GetTexture()->GetDesc(&gameDesc);
+    assert(gameDesc.Format == desc.Format);
 
     m_deferred->CopySubresourceRegion(m_gameTexture.GetTexture(), 0, 0, 0, 0, desktopTexture.Get(), 0, &game_box);
 
-    m_blurPre.Render(m_deferred.Get(), m_gameTexture, m_settings.blurPasses);
+    // m_blurPre.Render(m_deferred.Get(), m_gameTexture, m_settings.blurPasses);
 
-    m_copy.Render(m_deferred.Get(), m_offscreen1, m_gameTexture);
+    // Generate mipmaps for the captured game area
+    m_deferred->GenerateMips(m_gameTexture.GetSRV());
 
-    m_blurDownscale.Render(m_deferred.Get(), m_offscreen1, m_settings.blurPasses);
+    // Extract the specific mip level to the secondary buffer for the final blur/stretch
+    m_deferred->CopySubresourceRegion(m_downsampledTexture.GetTexture(), 0, 0, 0, 0, m_gameTexture.GetTexture(), m_settings.mipmapLevels, NULL);
 
-    m_copy.Render(m_deferred.Get(), m_offscreen2, m_offscreen1);
+    m_blurDownscale.Render(m_deferred.Get(), m_downsampledTexture, m_settings.blurPasses);
 
-    ID3D11RenderTargetView* rtv = m_offscreen3.GetRTV();
+    UINT mipWidth = max(1u, m_gameWidth >> m_settings.mipmapLevels);
+    UINT mipHeight = max(1u, m_gameHeight >> m_settings.mipmapLevels);
+    if (mipWidth > m_effectZoom * 2 && mipHeight > m_effectZoom * 2)
+    {
+        m_copy.Render(m_deferred.Get(), m_processedBlurTexture, 0, 0, m_gameWidth, m_gameHeight,
+            m_downsampledTexture, m_effectZoom, m_effectZoom, mipWidth - m_effectZoom * 2, mipHeight - m_effectZoom * 2);
+    }
+    else
+    {
+        m_copy.Render(m_deferred.Get(), m_processedBlurTexture, m_downsampledTexture);
+    }
+
+    bool clearInner = false;
+    std::vector<BlackBar> innerBars = m_detectInner.GetDetectedBars();
+    if (innerBars.size() == 2)
+    {
+        // outer pillar box, inner letter box
+        if (m_gameHeight == m_windowHeight)
+        {
+            BlackBar& ib = innerBars[0];
+            if (ib.width == m_gameWidth)
+            {
+                clearInner = true;
+            }
+        }
+        // outer letter box, inner pillar box
+        else if (m_gameWidth == m_windowWidth)
+        {
+            BlackBar& ib = innerBars[0];
+            if (ib.height == m_gameHeight)
+            {
+                clearInner = true;
+            }
+        }
+    }
+
+    if (clearInner)
+    {
+        // clear the inner box in the effect texture
+        ComPtr<ID3D11DeviceContext1> deferred1 = nullptr;
+        m_deferred.As(&deferred1);
+        if (deferred1)
+        {
+            float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+            D3D11_RECT rects[2] = { innerBars[0].toRect(), innerBars[1].toRect() };
+            deferred1->ClearView(m_processedBlurTexture.GetRTV(), color, &rects[0], 2);
+        }
+    }
+
+
+    ID3D11RenderTargetView* rtv = m_effectCanvasTexture.GetRTV();
     float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     m_deferred->ClearRenderTargetView(rtv, color);
 
     D3D11_TEXTURE2D_DESC desc2 = {};
-    m_offscreen2.GetTexture()->GetDesc(&desc2);
+    m_processedBlurTexture.GetTexture()->GetDesc(&desc2);
 
 
     for (int i = 0; i < 2; i++)
@@ -439,13 +531,8 @@ bool AmbientLight::RenderEffects()
             break;
         }
 
-        D3D11_BOX src = srcBar.GetBox();
-        src.left += m_effectZoom;
-        src.right += m_effectZoom;
-        src.top += m_effectZoom;
-        src.bottom += m_effectZoom;
-
-        D3D11_BOX dst = m_blackBars[i].GetBox();
+        D3D11_BOX src = srcBar.toBox();
+        D3D11_BOX dst = m_blackBars[i].toBox();
 
         Copy::Flip flip = Copy::FlipNone;
         if (m_settings.mirrored)
@@ -453,8 +540,8 @@ bool AmbientLight::RenderEffects()
             flip = (m_gameWidth == m_windowWidth) ? Copy::FlipVertical : Copy::FlipHorizontal;
         }
 
-        m_copy.Render(m_deferred.Get(), m_offscreen3, dst.left, dst.top, RECT_WIDTH(dst), RECT_HEIGHT(dst),
-            m_offscreen2, src.left, src.top, RECT_WIDTH(src), RECT_HEIGHT(src), flip);
+        m_copy.Render(m_deferred.Get(), m_effectCanvasTexture, dst.left, dst.top, RECT_WIDTH(dst), RECT_HEIGHT(dst),
+            m_processedBlurTexture, src.left, src.top, RECT_WIDTH(src), RECT_HEIGHT(src), flip);
     }
 
     m_effectRendered = true;
@@ -466,7 +553,7 @@ void AmbientLight::ClearEffects()
 {
     if (m_effectRendered)
     {
-        ID3D11RenderTargetView* rtv = m_offscreen3.GetRTV();
+        ID3D11RenderTargetView* rtv = m_effectCanvasTexture.GetRTV();
         float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
         m_deferred->ClearRenderTargetView(rtv, color);
 
@@ -481,8 +568,10 @@ void AmbientLight::RenderConfig()
     if (!m_showConfigWindow)
         return;
 
-    bool open = RenderUI(m_settings, m_gameWidth, m_gameHeight);
+    bool open = RenderUI(m_hwnd, m_settings, m_gameWidth, m_gameHeight, m_resetUiPosition);
     ShowConfigWindow(open);
+
+    m_resetUiPosition = false;
 }
 
 void AmbientLight::RenderBackBuffer()
@@ -500,13 +589,13 @@ void AmbientLight::RenderBackBuffer()
     if (m_effectRendered)
     {
         if (m_settings.vignetteEnabled)
-            m_vignette.Render(m_deferred.Get(), m_offscreen3);
+            m_vignette.Render(m_deferred.Get(), m_effectCanvasTexture);
 
         if (m_settings.useAutoDetection && m_settings.autoDetectionLightMask)
-            m_detection.RenderMask(m_deferred.Get(), m_offscreen3);
+            m_detection.RenderLumaMask(m_deferred.Get(), m_effectCanvasTexture);
     }
 
-    m_deferred->CopyResource(backview.GetTexture(), m_offscreen3.GetTexture());
+    m_deferred->CopyResource(backview.GetTexture(), m_effectCanvasTexture.GetTexture());
 
     m_deferred->OMSetRenderTargets(1, &rtv_back, nullptr);
     if (m_showConfigWindow)
@@ -538,7 +627,7 @@ void AmbientLight::Present()
             int numRects = 0;
             for (auto& bar : m_blackBars)
             {
-                D3D11_BOX box = bar.GetBox();
+                D3D11_BOX box = bar.toBox();
                 if (IS_BOX_EMPTY(box))
                     continue;
                 m_dirtyRects[numRects].left = box.left;
@@ -612,16 +701,23 @@ void AmbientLight::Detect()
 {
     if (m_settings.useAutoDetection)
     {
-        static ULONGLONG lastDetection = 0;
-        ULONGLONG now = timeGetTime();
-        if (now - lastDetection > m_settings.autoDetectionTime)
+        if (m_detectionInnerTimer.HasElapsed(m_settings.autoDetectionTime))
+        {
+            // Detect "inner" letterboxing within the game frame, e.g.
+            // - Display 32:9
+            // - Game 16:9
+            // - Cutscene 21:9
+            // the main detection will detect the pillarbox between game and display, and the second detection will detect the cutscene letterbox
+            // we will then apply a black bar matching the inner cutscene to crop the rendered blur effect
+            m_detectInner.Detect(m_immediate.Get(), m_gameTexture);
+        }
+        if (m_detectionTimer.HasElapsed(m_settings.autoDetectionTime))
         {
             m_capture.Capture();
             ComPtr<ID3D11Texture2D> desktopTexture = m_capture.GetDesktopTexture();
             if (!desktopTexture)
                 return;
 
-            lastDetection = now;
             TextureView desktopTextureView;
             desktopTextureView.CreateViews(m_device.Get(), desktopTexture.Get(), false, true, false);
             m_detection.Detect(m_immediate.Get(), desktopTextureView);

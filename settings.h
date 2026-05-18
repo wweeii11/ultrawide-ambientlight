@@ -30,6 +30,9 @@
 #define DEFAULT_SHOW_IN_TASKBAR     true
 #define DEFAULT_POPUP_CONFIG_ON_FOCUS     true
 #define DEFAULT_UI_SCALE               1.0f
+#define DEFAULT_MIPMAP_LEVELS          5
+#define DEFAULT_DISPLAY                0
+
 
 struct ResolutionSettings
 {
@@ -44,12 +47,24 @@ struct Resolutions
     std::vector<ResolutionSettings> available;
 };
 
+struct AvailableMonitor {
+    int id;
+    std::wstring device;     // "\\.\\DISPLAY1"
+    std::wstring friendlyName;
+    RECT rect;
+    int width;
+    int height;
+    bool isPrimary;
+    HMONITOR monitor;
+};
+
 struct AppSettings
 {
     bool loaded = false;
+    int display = DEFAULT_DISPLAY;
     UINT gameWidth = 0;
     UINT gameHeight = 0;
-    UINT blurDownscale = 0;
+    UINT mipmapLevels = DEFAULT_MIPMAP_LEVELS;
     UINT blurPasses = DEFAULT_BLUR_PASSES;
     UINT blurSamples = DEFAULT_BLUR_SAMPLES;
     UINT frameRate = DEFAULT_FRAMERATE;
@@ -81,3 +96,8 @@ bool ReadSettings(AppSettings& settings);
 void SaveSettings(AppSettings& settings);
 
 std::filesystem::path GetDataFile(std::wstring fileName);
+
+void RefreshDisplays();
+std::vector<AvailableMonitor> GetAvailableDisplays();
+RECT GetDisplayRect(int display);
+HMONITOR GetDisplayMonitor(int display);

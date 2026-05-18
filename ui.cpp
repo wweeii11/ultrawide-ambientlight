@@ -132,7 +132,7 @@ void InitUI(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context
     UpdateWindowFlags(hwnd, settings);
 }
 
-bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
+bool RenderUI(HWND hwnd, AppSettings& settings, UINT gameWidth, UINT gameHeight, bool resetPos)
 {
     // Start the Dear ImGui frame
     ImGui_ImplDX11_NewFrame();
@@ -141,8 +141,11 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
 
     ImGuiIO& io = ImGui::GetIO();
 
-    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    if (resetPos)
+    {
+        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+        ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    }
 
     bool open = true;
     ImGui::Begin("Ambient Light", &open, 0);
@@ -151,6 +154,25 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
 
     if (ImGui::CollapsingHeader("Game/Content Resolution", ImGuiTreeNodeFlags_DefaultOpen))
     {
+        if (ImGui::BeginCombo("Display", std::to_string(settings.display).c_str(), 0))
+        {
+            auto displays = GetAvailableDisplays();
+            for (size_t i = 0; i < displays.size(); ++i)
+            {
+                bool selected = (settings.display == i);
+                
+                char label[256] = { 0 };
+                sprintf_s(label, "%lld: %d x %d", i, displays[i].width, displays[i].height);
+                if (ImGui::Selectable(label, selected))
+                {
+                    settings.display = (int)i;
+                    SaveSettings(settings);
+                    PostMessage(hwnd, WM_DISPLAYCHANGE, 0, 0);
+                }
+            }
+            ImGui::EndCombo();
+        }
+
         if (ImGui::Checkbox("Auto Detect", &settings.useAutoDetection))
             SaveSettings(settings);
 
@@ -292,13 +314,13 @@ bool RenderUI(AppSettings& settings, UINT gameWidth, UINT gameHeight)
             {
                 SaveSettings(settings);
             }
-            
-            if (ImGui::DragInt("Downscale", (int*)&settings.blurDownscale, 0.1f, 16, 1024))
+
+            if (ImGui::DragInt("Samples", (int*)&settings.blurSamples, 0.1f, 1, 63))
             {
                 SaveSettings(settings);
             }
 
-            if (ImGui::DragInt("Samples", (int*)&settings.blurSamples, 0.1f, 1, 63))
+            if (ImGui::DragInt("Downsampling Levels", (int*)&settings.mipmapLevels, 0.1f, 0, 12))
             {
                 SaveSettings(settings);
             }
@@ -402,4 +424,3 @@ void UpdateWindowFlags(HWND hwnd, AppSettings& settings)
 
     SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
 }
-
