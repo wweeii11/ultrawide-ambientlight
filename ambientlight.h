@@ -23,9 +23,18 @@ public:
 
     RECT GetPresentRect();
 private:
+    struct DesktopFormat
+    {
+        DXGI_FORMAT format;
+        DXGI_COLOR_SPACE_TYPE colorSpace;
+    };
+
+
     AppSettings m_settings;
     void UpdateSettings();
     void ValidateSettings();
+
+    DesktopFormat GetDesktopFormat();
 
     HWND m_hwnd;
     bool m_resetUiPosition;
