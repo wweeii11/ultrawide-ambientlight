@@ -10,12 +10,13 @@ DesktopCapture::~DesktopCapture()
 {
 }
 
-HRESULT DesktopCapture::Initialize(ComPtr<ID3D11Device> device, HMONITOR monitor)
+HRESULT DesktopCapture::Initialize(ComPtr<ID3D11Device> device, HMONITOR monitor, bool hdr)
 {
     m_device = device;
     m_device->GetImmediateContext(&m_context);
 
     m_monitor = monitor;
+    m_hdr = hdr;
 
     ComPtr<IDXGIDevice> dxgiDevice;
     HRESULT hr = m_device.As(&dxgiDevice);
@@ -46,10 +47,16 @@ HRESULT DesktopCapture::Initialize(ComPtr<ID3D11Device> device, HMONITOR monitor
     RETURN_IF_FAILED(hr);
 
     std::vector<DXGI_FORMAT> formats = {
-        DXGI_FORMAT_B8G8R8A8_UNORM,
-        DXGI_FORMAT_R10G10B10A2_UNORM,
-        DXGI_FORMAT_R16G16B16A16_FLOAT
+        DXGI_FORMAT_B8G8R8A8_UNORM
     };
+
+    if (hdr)
+    {
+        formats.insert(formats.begin(), {
+            DXGI_FORMAT_R10G10B10A2_UNORM,
+            DXGI_FORMAT_R16G16B16A16_FLOAT
+            });
+    }
 
     ComPtr<IDXGIOutput6> dxgiOutput6;
     hr = dxgiOutput.As(&dxgiOutput6);
@@ -76,7 +83,7 @@ HRESULT DesktopCapture::Capture()
     HRESULT hr = S_OK;
     if (!m_duplication)
     {
-        Initialize(m_device, m_monitor);
+        Initialize(m_device, m_monitor, m_hdr);
     }
     if (!m_desktopTexture && m_duplication)
     {

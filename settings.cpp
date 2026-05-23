@@ -218,6 +218,9 @@ bool ReadSettings(AppSettings& settings)
     UINT autoDetectionReservedHeight = DEFAULT_AUTO_DETECTION_RESERVED_HEIGHT;
     inipp::get_value(ini.sections["Game"], "AutoDetectionReservedHeight", autoDetectionReservedHeight);
 
+    bool autoDetectionInner = DEFAULT_AUTO_DETECTION_INNER;
+    inipp::get_value(ini.sections["Game"], "AutoDetectionInner", autoDetectionInner);
+
     bool showInTaskbar = DEFAULT_SHOW_IN_TASKBAR;
     inipp::get_value(ini.sections["UI"], "ShowInTaskbar", showInTaskbar);
 
@@ -229,6 +232,9 @@ bool ReadSettings(AppSettings& settings)
 
     int display = DEFAULT_DISPLAY;
     inipp::get_value(ini.sections["Game"], "Display", display);
+
+    bool hdrSupport = DEFAULT_HDR_SUPPORT;
+    inipp::get_value(ini.sections["Game"], "HDRSupport", hdrSupport);
 
     settings.loaded = true;
     settings.blurPasses = blur;
@@ -254,7 +260,9 @@ bool ReadSettings(AppSettings& settings)
     settings.autoDetectionReservedArea = autoDetectionReservedArea;
     settings.autoDetectionReservedWidth = autoDetectionReservedWidth;
     settings.autoDetectionReservedHeight = autoDetectionReservedHeight;
+    settings.autoDetectionInner = autoDetectionInner;
     settings.uiScale = uiScale;
+    settings.hdrSupport = hdrSupport;
 
     std::string currentRes = "";
     inipp::get_value(ini.sections["Game"], "Resolution", currentRes);
@@ -356,9 +364,12 @@ void SaveSettings(AppSettings& settings)
     ini.sections["Game"]["AutoDetectionReservedArea"] = settings.autoDetectionReservedArea ? "true" : "false";
     ini.sections["Game"]["AutoDetectionReservedWidth"] = std::to_string(settings.autoDetectionReservedWidth);
     ini.sections["Game"]["AutoDetectionReservedHeight"] = std::to_string(settings.autoDetectionReservedHeight);
+    ini.sections["Game"]["AutoDetectionInner"] = settings.autoDetectionInner ? "true" : "false";
+    ini.sections["Game"]["HDRSupport"] = settings.hdrSupport ? "true" : "false";
     ini.sections["UI"]["ShowInTaskbar"] = settings.showInTaskbar ? "true" : "false";
     ini.sections["UI"]["PopupConfigOnFocus"] = settings.popupConfigOnFocus ? "true" : "false";
     ini.sections["UI"]["UIScale"] = std::to_string(settings.uiScale);
+    
 
 
     for (auto& res : settings.resolutions.available)

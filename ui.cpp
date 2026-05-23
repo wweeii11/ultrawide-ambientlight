@@ -132,6 +132,7 @@ void InitUI(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context
     UpdateWindowFlags(hwnd, settings);
 }
 
+
 bool RenderUI(HWND hwnd, AppSettings& settings, UINT gameWidth, UINT gameHeight, bool resetPos)
 {
     // Start the Dear ImGui frame
@@ -152,236 +153,272 @@ bool RenderUI(HWND hwnd, AppSettings& settings, UINT gameWidth, UINT gameHeight,
 
     ImGui::Text("Press Esc or the system tray icon to show or hide the configuration window");
 
-    if (ImGui::CollapsingHeader("Game/Content Resolution", ImGuiTreeNodeFlags_DefaultOpen))
+    if (ImGui::BeginTabBar("Configurations"))
     {
-        if (ImGui::BeginCombo("Display", std::to_string(settings.display).c_str(), 0))
+        if (ImGui::BeginTabItem("Game/Content Resolution"))
         {
             auto displays = GetAvailableDisplays();
-            for (size_t i = 0; i < displays.size(); ++i)
+
+            if (1 < displays.size())
             {
-                bool selected = (settings.display == i);
-                
-                char label[256] = { 0 };
-                sprintf_s(label, "%lld: %d x %d", i, displays[i].width, displays[i].height);
-                if (ImGui::Selectable(label, selected))
+                if (ImGui::BeginCombo("Display", std::to_string(settings.display).c_str(), 0))
                 {
-                    settings.display = (int)i;
-                    SaveSettings(settings);
-                    PostMessage(hwnd, WM_DISPLAYCHANGE, 0, 0);
+
+                    for (size_t i = 0; i < displays.size(); ++i)
+                    {
+                        bool selected = (settings.display == i);
+
+                        char label[256] = { 0 };
+                        sprintf_s(label, "%lld: %d x %d", i, displays[i].width, displays[i].height);
+                        if (ImGui::Selectable(label, selected))
+                        {
+                            settings.display = (int)i;
+                            SaveSettings(settings);
+                            PostMessage(hwnd, WM_DISPLAYCHANGE, 0, 0);
+                        }
+                    }
+                    ImGui::EndCombo();
                 }
             }
-            ImGui::EndCombo();
-        }
 
-        if (ImGui::Checkbox("Auto Detect", &settings.useAutoDetection))
-            SaveSettings(settings);
-
-        if (settings.useAutoDetection)
-        {
-            ImGui::Text("Detected: %d x %d", gameWidth, gameHeight);
+            if (ImGui::Checkbox("HDR Support", &settings.hdrSupport))
+            {
+                SaveSettings(settings);
+                PostMessage(hwnd, WM_DISPLAYCHANGE, 0, 0);
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            {
+                ImGui::SetTooltip("Process in HDR format when possible.");
+            }
 
             if (ImGui::CollapsingHeader("Detection", ImGuiTreeNodeFlags_DefaultOpen))
             {
-                if (ImGui::Checkbox("Light Peek", &settings.autoDetectionLightMask))
-                {
+                if (ImGui::Checkbox("Auto Detect", &settings.useAutoDetection))
                     SaveSettings(settings);
-                }
-                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                {
-                    ImGui::SetTooltip(
-                        "Preserve bright highlights that appear inside detected black-bar regions.\n"
-                        "Enable this when you want small bright UI elements or overlays on letterboxed video\n"
-                        "to remain visible instead of being masked out by the black-bar detection.");
-                }
 
-                int brightnessPercent = (int)(settings.autoDetectionBrightnessThreshold * 100);
-                if (ImGui::DragInt("Detection Brightness", &brightnessPercent, 0.1f, 1, 100, "%d%%"))
+                if (settings.useAutoDetection)
                 {
-                    settings.autoDetectionBrightnessThreshold = float(brightnessPercent) / 100.0f;
-                    SaveSettings(settings);
-                }
-                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                {
-                    ImGui::SetTooltip(
-                        "Brightness threshold used to classify pixels as \"black\" for detection.\n"
-                        "Pixels darker than this value are considered part of black bars.\n"
-                        "Lower values make the detector more permissive (more pixels counted as black).\n"
-                        "Higher values make it stricter. Range: 1%% (dark) to 100%% (bright).");
-                }
+                    ImGui::Text("Detected: %d x %d", gameWidth, gameHeight);
 
-                int blackRatioPercent = (int)(settings.autoDetectionBlackRatio * 100);
-                if (ImGui::DragInt("Detection Ratio ", &blackRatioPercent, 0.1f, 1, 100, "%d%%%"))
-                {
-                    settings.autoDetectionBlackRatio = float(blackRatioPercent) / 100.0f;
-                    SaveSettings(settings);
-                }
-                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                {
-                    ImGui::SetTooltip(
-                        "Proportion of an analyzed area that must be below the brightness threshold to\n"
-                        "classify that area as a black bar.\n"
-                        "Increase this to avoid false positives (requires more of the area to be dark),\n"
-                        "or decrease to detect thinner/partial bars.");
-                }
-                if (ImGui::DragInt("Detection Interval", (int*)&settings.autoDetectionTime, 0.1f, 1, 3000, "%d ms"))
-                {
-                    SaveSettings(settings);
-                }
 
-                if (ImGui::Checkbox("Symmetric", &settings.autoDetectionSymmetricBars))
-                {
-                    SaveSettings(settings);
-                }
-                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                {
-                    ImGui::SetTooltip(
-                        "Force detected black bars to be symmetric and align to the smaller side.");
-                }
-
-                if (ImGui::Checkbox("Reserved Area", &settings.autoDetectionReservedArea))
-                {
-                    SaveSettings(settings);
-                }
-                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                {
-                    ImGui::SetTooltip(
-                        "Exclude a centered rectangular region from black-bar detection.\n"
-                        "You can define it using pixel width/height (1920, 1080) or aspect ratio (e.g. 16, 9)");
-                }
-                if (settings.autoDetectionReservedArea)
-                {
-                    int reservedSize[2] = { (int)settings.autoDetectionReservedWidth, (int)settings.autoDetectionReservedHeight };
-                    if (ImGui::InputInt2("", reservedSize, ImGuiInputTextFlags_CharsDecimal))
+                    if (ImGui::Checkbox("Light Peek", &settings.autoDetectionLightMask))
                     {
-                        settings.autoDetectionReservedWidth = (UINT)max(0, reservedSize[0]);
-                        settings.autoDetectionReservedHeight = (UINT)max(0, reservedSize[1]);
+                        SaveSettings(settings);
+                    }
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    {
+                        ImGui::SetTooltip(
+                            "Preserve bright highlights that appear inside detected black-bar regions.\n"
+                            "Enable this when you want small bright UI elements or overlays on letterboxed video\n"
+                            "to remain visible instead of being masked out by the black-bar detection.");
+                    }
+
+                    int brightnessPercent = (int)(settings.autoDetectionBrightnessThreshold * 100);
+                    if (ImGui::DragInt("Detection Brightness", &brightnessPercent, 0.1f, 1, 100, "%d%%"))
+                    {
+                        settings.autoDetectionBrightnessThreshold = float(brightnessPercent) / 100.0f;
+                        SaveSettings(settings);
+                    }
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    {
+                        ImGui::SetTooltip(
+                            "Brightness threshold used to classify pixels as \"black\" for detection.\n"
+                            "Pixels darker than this value are considered part of black bars.\n"
+                            "Lower values make the detector more permissive (more pixels counted as black).\n"
+                            "Higher values make it stricter. Range: 1%% (dark) to 100%% (bright).");
+                    }
+
+                    int blackRatioPercent = (int)(settings.autoDetectionBlackRatio * 100);
+                    if (ImGui::DragInt("Detection Ratio ", &blackRatioPercent, 0.1f, 1, 100, "%d%%%"))
+                    {
+                        settings.autoDetectionBlackRatio = float(blackRatioPercent) / 100.0f;
+                        SaveSettings(settings);
+                    }
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    {
+                        ImGui::SetTooltip(
+                            "Proportion of an analyzed area that must be below the brightness threshold to\n"
+                            "classify that area as a black bar.\n"
+                            "Increase this to avoid false positives (requires more of the area to be dark),\n"
+                            "or decrease to detect thinner/partial bars.");
+                    }
+                    if (ImGui::DragInt("Detection Interval", (int*)&settings.autoDetectionTime, 0.1f, 1, 3000, "%d ms"))
+                    {
+                        SaveSettings(settings);
+                    }
+
+                    if (ImGui::Checkbox("Symmetric", &settings.autoDetectionSymmetricBars))
+                    {
+                        SaveSettings(settings);
+                    }
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    {
+                        ImGui::SetTooltip(
+                            "Force detected black bars to be symmetric and align to the smaller side.");
+                    }
+
+                    if (ImGui::Checkbox("Reserved Area", &settings.autoDetectionReservedArea))
+                    {
+                        SaveSettings(settings);
+                    }
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    {
+                        ImGui::SetTooltip(
+                            "Exclude a centered rectangular region from black-bar detection.\n"
+                            "You can define it using pixel width/height (1920, 1080) or aspect ratio (e.g. 16, 9)");
+                    }
+                    if (settings.autoDetectionReservedArea)
+                    {
+                        int reservedSize[2] = { (int)settings.autoDetectionReservedWidth, (int)settings.autoDetectionReservedHeight };
+                        if (ImGui::InputInt2("", reservedSize, ImGuiInputTextFlags_CharsDecimal))
+                        {
+                            settings.autoDetectionReservedWidth = (UINT)max(0, reservedSize[0]);
+                            settings.autoDetectionReservedHeight = (UINT)max(0, reservedSize[1]);
+
+                            SaveSettings(settings);
+                        }
+                    }
+                    if (ImGui::Checkbox("Inner Detection", &settings.autoDetectionInner))
+                    {
+                        SaveSettings(settings);
+                    }
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    {
+                        ImGui::SetTooltip("Perform detection for additional black bars. (experimental)");
+                    }
+                }
+                else
+                {
+                    if (ImGui::BeginCombo("Presets", settings.resolutions.current.c_str(), 0))
+                    {
+                        for (auto& res : settings.resolutions.available)
+                        {
+                            bool selected = settings.resolutions.current == res.name;
+                            if (ImGui::Selectable(res.name.c_str(), &selected))
+                            {
+                                settings.resolutions.current = res.name;
+                                SaveSettings(settings);
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
+
+                    bool updateResolution = false;
+                    int res_input[2] = { (int)settings.gameWidth, (int)settings.gameHeight };
+                    if (ImGui::InputInt2("", res_input, ImGuiInputTextFlags_CharsDecimal))
+                        updateResolution = true;
+
+                    if (updateResolution)
+                    {
+                        for (auto& res : settings.resolutions.available)
+                        {
+                            if (settings.resolutions.current == res.name)
+                            {
+                                res.width = res_input[0];
+                                res.height = res_input[1];
+                                break;
+                            }
+                        }
 
                         SaveSettings(settings);
                     }
+
+                    ImGui::Text("Selected: %d x %d", gameWidth, gameHeight);
                 }
             }
+
+
+            ImGui::EndTabItem();
         }
-        else 
+
+        if (ImGui::BeginTabItem("Effects"))
         {
-            if (ImGui::BeginCombo("Presets", settings.resolutions.current.c_str(), 0))
+            ImGui::SameLine(); HelpMarker(
+                "Click and drag to edit a value.\n"
+                "Hold Shift/Alt for faster/slower edits.\n"
+                "Double-click or Ctrl+click to enter a value.");
+
+            ImGui::SeparatorText("Blur");
             {
-                for (auto& res : settings.resolutions.available)
+                if (ImGui::DragInt("Passes", (int*)&settings.blurPasses, 0.1f, 0, 128))
                 {
-                    bool selected = settings.resolutions.current == res.name;
-                    if (ImGui::Selectable(res.name.c_str(), &selected))
-                    {
-                        settings.resolutions.current = res.name;
-                        SaveSettings(settings);
-                    }
+                    SaveSettings(settings);
                 }
-                ImGui::EndCombo();
-            }
 
-            bool updateResolution = false;
-            int res_input[2] = { (int)settings.gameWidth, (int)settings.gameHeight };
-            if (ImGui::InputInt2("", res_input, ImGuiInputTextFlags_CharsDecimal))
-                updateResolution = true;
-
-            if (updateResolution)
-            {
-                for (auto& res : settings.resolutions.available)
+                if (ImGui::DragInt("Samples", (int*)&settings.blurSamples, 0.1f, 1, 63))
                 {
-                    if (settings.resolutions.current == res.name)
-                    {
-                        res.width = res_input[0];
-                        res.height = res_input[1];
-                        break;
-                    }
+                    SaveSettings(settings);
                 }
 
-                SaveSettings(settings);
+                if (ImGui::DragInt("Downsampling Levels", (int*)&settings.mipmapLevels, 0.1f, 0, 12))
+                {
+                    SaveSettings(settings);
+                }
             }
 
-            ImGui::Text("Selected: %d x %d", gameWidth, gameHeight);
-        }
-    }
+            ImGui::SeparatorText("Vignette");
+            {
+                if (ImGui::Checkbox("Enabled", &settings.vignetteEnabled))
+                    SaveSettings(settings);
 
-    if (ImGui::CollapsingHeader("Effects", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        ImGui::SameLine(); HelpMarker(
-            "Click and drag to edit a value.\n"
-            "Hold Shift/Alt for faster/slower edits.\n"
-            "Double-click or Ctrl+click to enter a value.");
+                if (ImGui::DragFloat("Intensity", (float*)&settings.vignetteIntensity, 0.01f, 0.0f, 1.0f))
+                {
+                    SaveSettings(settings);
+                }
 
-        ImGui::SeparatorText("Blur");
-        {
-            if (ImGui::DragInt("Passes", (int*)&settings.blurPasses, 0.1f, 0, 128))
+                if (ImGui::DragFloat("Radius", (float*)&settings.vignetteRadius, 0.01f, 0.0f, 1.0f))
+                {
+                    SaveSettings(settings);
+                }
+
+                if (ImGui::DragFloat("Smoothness", (float*)&settings.vignetteSmoothness, 0.01f, 0.0f, 1.0f))
+                {
+                    SaveSettings(settings);
+                }
+            }
+
+            ImGui::SeparatorText("Misc");
+            if (ImGui::DragInt("Frame rate", (int*)&settings.frameRate, 0.1f, 10, 500))
             {
                 SaveSettings(settings);
             }
 
-            if (ImGui::DragInt("Samples", (int*)&settings.blurSamples, 0.1f, 1, 63))
+            if (ImGui::DragInt("Zoom", (int*)&settings.zoom, 1, 0, 16))
+            {
+                settings.zoom = std::clamp(settings.zoom, 0u, 16u);
+                SaveSettings(settings);
+            }
+
+            if (ImGui::DragFloat("Stretch", &settings.stretchFactor, 0.01f, 0.1f, 5.0f))
+                SaveSettings(settings);
+
+            if (ImGui::Checkbox("Mirrored", &settings.mirrored))
+                SaveSettings(settings);
+
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("UI"))
+        {
+            if (ImGui::Checkbox("Show in taskbar", &settings.showInTaskbar))
+            {
+                SaveSettings(settings);
+            }
+            if (ImGui::Checkbox("Auto open settings", &settings.popupConfigOnFocus))
+            {
+                SaveSettings(settings);
+            }
+            ImGui::SameLine(); HelpMarker("Automatically open the settings window\n"
+                "when the application is focused.");
+            if (ImGui::DragFloat("UI Scale", &settings.uiScale, 0.1f, 0.5f, 3.0f))
             {
                 SaveSettings(settings);
             }
 
-            if (ImGui::DragInt("Downsampling Levels", (int*)&settings.mipmapLevels, 0.1f, 0, 12))
-            {
-                SaveSettings(settings);
-            }
+            ImGui::EndTabItem();
         }
 
-        ImGui::SeparatorText("Vignette");
-        {
-            if (ImGui::Checkbox("Enabled", &settings.vignetteEnabled))
-                SaveSettings(settings);
-
-            if (ImGui::DragFloat("Intensity", (float*)&settings.vignetteIntensity, 0.01f, 0.0f, 1.0f))
-            {
-                SaveSettings(settings);
-            }
-
-            if (ImGui::DragFloat("Radius", (float*)&settings.vignetteRadius, 0.01f, 0.0f, 1.0f))
-            {
-                SaveSettings(settings);
-            }
-
-            if (ImGui::DragFloat("Smoothness", (float*)&settings.vignetteSmoothness, 0.01f, 0.0f, 1.0f))
-            {
-                SaveSettings(settings);
-            }
-        }
-
-        ImGui::SeparatorText("Misc");
-        if (ImGui::DragInt("Frame rate", (int*)&settings.frameRate, 0.1f, 10, 500))
-        {
-            SaveSettings(settings);
-        }
-
-        if (ImGui::DragInt("Zoom", (int*)&settings.zoom, 1, 0, 16))
-        {
-            settings.zoom = std::clamp(settings.zoom, 0u, 16u);
-            SaveSettings(settings);
-        }
-
-        if (ImGui::DragFloat("Stretch", &settings.stretchFactor, 0.01f, 0.1f, 5.0f))
-            SaveSettings(settings);
-
-        if (ImGui::Checkbox("Mirrored", &settings.mirrored))
-            SaveSettings(settings);
-    }
-
-    if (ImGui::CollapsingHeader("UI", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        if (ImGui::Checkbox("Show in taskbar", &settings.showInTaskbar))
-        {
-            SaveSettings(settings);
-        }
-        if (ImGui::Checkbox("Auto open settings", &settings.popupConfigOnFocus))
-        {
-            SaveSettings(settings);
-        }
-        ImGui::SameLine(); HelpMarker("Automatically open the settings window\n"
-            "when the application is focused.");
-        if (ImGui::DragFloat("UI Scale", &settings.uiScale, 0.1f, 0.5f, 3.0f))
-        {
-            SaveSettings(settings);
-        }
+        ImGui::EndTabBar();
     }
 
     ImGui::Separator();
@@ -415,7 +452,7 @@ void UpdateWindowFlags(HWND hwnd, AppSettings& settings)
 
     if (settings.popupConfigOnFocus)
     {
-        exStyle |= WS_EX_NOACTIVATE; 
+        exStyle |= WS_EX_NOACTIVATE;
     }
     else
     {
