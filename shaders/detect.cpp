@@ -117,8 +117,6 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
         m_bottomBar = m_height;
         m_leftBar = 0;
         m_rightBar = m_width;
-        m_detectWidth = m_width;
-        m_detectHeight = m_height;
     }
     m_width = width;
     m_height = height;
@@ -324,19 +322,6 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
 
     context->Unmap(m_lumaStaging.Get(), 0);
 
-    if (m_reservedWidth > 0)
-    {
-        UINT maxBarWidth = (m_width - m_reservedWidth) / 2;
-        m_leftBar = min(m_leftBar, maxBarWidth);
-        m_rightBar = min(m_rightBar, maxBarWidth);
-    }
-    if (m_reservedHeight > 0)
-    {
-        UINT maxBarHeight = (m_height - m_reservedHeight) / 2;
-        m_topBar = min(m_topBar, maxBarHeight);
-        m_bottomBar = min(m_bottomBar, maxBarHeight);
-    }
-
     if (m_symmetricBars)
     {
         UINT verticalBarSize = min(m_topBar, m_bottomBar);
@@ -345,22 +330,6 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
         UINT horizontalBarSize = min(m_leftBar, m_rightBar);
         m_leftBar = horizontalBarSize;
         m_rightBar = horizontalBarSize;
-    }
-
-    m_detectWidth = m_width - m_leftBar - m_rightBar;
-    m_detectHeight = m_height - m_topBar - m_bottomBar;
-
-    float detectedAspect = (float)m_detectWidth / (float)m_detectHeight;
-    float windowAspect = (float)m_width / (float)m_height;
-
-    // keep either only letterbox or pillarbox
-    if (detectedAspect <= windowAspect)
-    {
-        m_detectHeight = m_height;
-    }
-    else
-    {
-        m_detectWidth = m_width;
     }
 
     return hr;
@@ -462,44 +431,94 @@ std::vector<BlackBar> Detection::GetFixedBars(UINT windowWidth, UINT windowHeigh
 std::vector<BlackBar> Detection::GetDetectedBars()
 {
     std::vector<BlackBar> ret;
-    if (m_detectWidth == m_width && m_detectHeight == m_height)
-    {
-        // no bars detected
-        return ret;
-    }
-    else if (m_detectHeight == m_height)
+
+    UINT left = m_leftBar;
+    UINT right = m_rightBar;
+    UINT top = m_topBar;
+    UINT bottom = m_bottomBar;
+
+    UINT leftRight = left + right;
+    UINT topBottom = top + bottom;
+
+    if (leftRight > topBottom)
     {
         // pillarbox
+        // apply reserved area only for primary bars
+        if (m_reservedWidth > 0)
+        {
+            UINT maxBarWidth = (m_width - m_reservedWidth) / 2;
+            left = min(left, maxBarWidth);
+            right = min(right, maxBarWidth);
+        }
+
         BlackBar leftBar = {};
         leftBar.parentWidth = m_width;
         leftBar.parentHeight = m_height;
-        leftBar.width = m_leftBar;
+        leftBar.width = left;
         leftBar.height = m_height;
         leftBar.position = Left;
 
         BlackBar rightBar = leftBar;
-        rightBar.width = m_rightBar;
+        rightBar.width = right;
         rightBar.position = Right;
 
         ret.push_back(leftBar);
         ret.push_back(rightBar);
+
+        // add secondary bars
+        if (top > 0 && bottom > 0)
+        {
+            BlackBar topBar = {};
+            topBar.parentWidth = m_width;
+            topBar.parentHeight = m_height;
+            topBar.width = m_width;
+            topBar.height = top;
+            topBar.position = Top;
+            BlackBar bottomBar = topBar;
+            bottomBar.height = bottom;
+            bottomBar.position = Bottom;
+            ret.push_back(topBar);
+            ret.push_back(bottomBar);
+        }
     }
-    else if (m_detectWidth == m_width)
+    else
     {
         // letterbox
+        if (m_reservedHeight > 0)
+        {
+            UINT maxBarHeight = (m_height - m_reservedHeight) / 2;
+            top = min(top, maxBarHeight);
+            bottom = min(bottom, maxBarHeight);
+        }
+
         BlackBar topBar = {};
         topBar.parentWidth = m_width;
         topBar.parentHeight = m_height;
         topBar.width = m_width;
-        topBar.height = m_topBar;
+        topBar.height = top;
         topBar.position = Top;
 
         BlackBar bottomBar = topBar;
-        bottomBar.height = m_bottomBar;
+        bottomBar.height = bottom;
         bottomBar.position = Bottom;
 
         ret.push_back(topBar);
         ret.push_back(bottomBar);
+
+        if (left > 0 && right > 0)
+        {
+            BlackBar leftBar = {};
+            leftBar.parentWidth = m_width;
+            leftBar.parentHeight = m_height;
+            leftBar.width = left;
+            leftBar.height = m_height;
+            leftBar.position = Left;
+            BlackBar rightBar = leftBar;
+            rightBar.width = right;
+            rightBar.position = Right;
+            ret.push_back(leftBar);
+            ret.push_back(rightBar);
+        }
     }
 
     return ret;

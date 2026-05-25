@@ -132,17 +132,6 @@ void AmbientLight::UpdateSettings()
             m_settings.autoDetectionReservedArea ? m_settings.autoDetectionReservedHeight : 0,
             colorSpace);
 
-        m_detectInner.Initialize(m_device,
-            m_deferred,
-            m_gameWidth,
-            m_gameHeight,
-            m_settings.autoDetectionBrightnessThreshold,
-            m_settings.autoDetectionBlackRatio,
-            false,
-            0,
-            0,
-            colorSpace);
-
         InitUI(m_hwnd, m_device.Get(), m_deferred.Get(), m_settings);
     }
 }
@@ -179,7 +168,7 @@ void AmbientLight::ValidateSettings()
     // use the width/height as aspect ratio, and calculate the game size base on the desktop size
     m_gameWidth = m_windowWidth;
     m_gameHeight = m_windowHeight;
-    if (m_blackBars.size() == 2)
+    if (m_blackBars.size() >= 2)
     {
         if (m_windowWidth > m_blackBars[0].width)
             m_gameWidth = m_windowWidth - m_blackBars[0].width - m_blackBars[1].width;
@@ -426,7 +415,7 @@ bool AmbientLight::RenderEffects()
     DXGI_SURFACE_DESC desc = {};
     surface->GetDesc(&desc);
 
-    if (m_blackBars.size() != 2)
+    if (m_blackBars.size() < 2)
         return false;
 
     D3D11_BOX game_box = {};
@@ -487,47 +476,6 @@ bool AmbientLight::RenderEffects()
         m_copy.Render(m_deferred.Get(), m_processedBlurTexture, m_downsampledTexture);
     }
 
-    if (m_settings.autoDetectionInner)
-    {
-        bool clearInner = false;
-        std::vector<BlackBar> innerBars = m_detectInner.GetDetectedBars();
-        if (innerBars.size() == 2)
-        {
-            // outer pillar box, inner letter box
-            if (m_gameHeight == m_windowHeight)
-            {
-                BlackBar& ib = innerBars[0];
-                if (ib.width == m_gameWidth)
-                {
-                    clearInner = true;
-                }
-            }
-            // outer letter box, inner pillar box
-            else if (m_gameWidth == m_windowWidth)
-            {
-                BlackBar& ib = innerBars[0];
-                if (ib.height == m_gameHeight)
-                {
-                    clearInner = true;
-                }
-            }
-        }
-
-        if (clearInner)
-        {
-            // clear the inner box in the effect texture
-            ComPtr<ID3D11DeviceContext1> deferred1 = nullptr;
-            m_deferred.As(&deferred1);
-            if (deferred1)
-            {
-                float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-                D3D11_RECT rects[2] = { innerBars[0].toRect(), innerBars[1].toRect() };
-                deferred1->ClearView(m_processedBlurTexture.GetRTV(), color, &rects[0], 2);
-            }
-        }
-    }
-
-
     ID3D11RenderTargetView* rtv = m_effectCanvasTexture.GetRTV();
     float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     m_deferred->ClearRenderTargetView(rtv, color);
@@ -566,6 +514,22 @@ bool AmbientLight::RenderEffects()
 
         m_copy.Render(m_deferred.Get(), m_effectCanvasTexture, dst.left, dst.top, RECT_WIDTH(dst), RECT_HEIGHT(dst),
             m_processedBlurTexture, src.left, src.top, RECT_WIDTH(src), RECT_HEIGHT(src), flip);
+    }
+
+    if (m_settings.autoDetectionInner)
+    {
+        if (m_blackBars.size() == 4)
+        {
+            // clear the inner box in the effect texture
+            ComPtr<ID3D11DeviceContext1> deferred1 = nullptr;
+            m_deferred.As(&deferred1);
+            if (deferred1)
+            {
+                float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                D3D11_RECT rects[2] = { m_blackBars[2].toRect(), m_blackBars[3].toRect() };
+                deferred1->ClearView(m_effectCanvasTexture.GetRTV(), color, &rects[0], 2);
+            }
+        }
     }
 
     m_effectRendered = true;
@@ -659,6 +623,8 @@ void AmbientLight::Present()
                 m_dirtyRects[numRects].right = box.right;
                 m_dirtyRects[numRects].bottom = box.bottom;
                 numRects++;
+                if (numRects == 2)
+                    break;
             }
 
             DXGI_PRESENT_PARAMETERS param = {};
@@ -725,16 +691,6 @@ void AmbientLight::Detect()
 {
     if (m_settings.useAutoDetection)
     {
-        if (m_settings.autoDetectionInner && m_detectionInnerTimer.HasElapsed(m_settings.autoDetectionTime))
-        {
-            // Detect "inner" letterboxing within the game frame, e.g.
-            // - Display 32:9
-            // - Game 16:9
-            // - Cutscene 21:9
-            // the main detection will detect the pillarbox between game and display, and the second detection will detect the cutscene letterbox
-            // we will then apply a black bar matching the inner cutscene to crop the rendered blur effect
-            m_detectInner.Detect(m_immediate.Get(), m_gameTexture);
-        }
         if (m_detectionTimer.HasElapsed(m_settings.autoDetectionTime))
         {
             m_capture.Capture();
@@ -749,18 +705,7 @@ void AmbientLight::Detect()
             std::vector<BlackBar> detected = m_detection.GetDetectedBars();
 
             bool updateSettings = false;
-            if (detected.size() == m_blackBars.size())
-            {
-                for (int i = 0; i < detected.size(); i++)
-                {
-                    if (detected[i] != m_blackBars[i])
-                    {
-                        updateSettings = true;
-                        break;
-                    }
-                }
-            }
-            else
+            if (detected != m_blackBars)
             {
                 updateSettings = true;
             }

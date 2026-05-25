@@ -54,8 +54,6 @@ private:
     Vignette m_vignette;
     Detection m_detection;
     ElapsedTimer m_detectionTimer;
-    Detection m_detectInner;
-    ElapsedTimer m_detectionInnerTimer;
 
     bool m_effectRendered;
     bool m_presented;

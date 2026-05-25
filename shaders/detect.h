@@ -51,8 +51,5 @@ private:
     UINT m_reservedWidth;
     UINT m_reservedHeight;
 
-    // detected non-black area
-    UINT m_detectWidth, m_detectHeight;
-
     DXGI_COLOR_SPACE_TYPE m_colorSpace;
 };
