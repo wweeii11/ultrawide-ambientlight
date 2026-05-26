@@ -286,6 +286,18 @@ bool RenderUI(HWND hwnd, AppSettings& settings, UINT gameWidth, UINT gameHeight,
                     {
                         ImGui::SetTooltip("Perform detection for additional black bars. (experimental)");
                     }
+                    if (settings.autoDetectionInner)
+                    {
+                        if (ImGui::Checkbox("Scale to fit screen", &settings.autoDetectionZoom))
+                        {
+                            SaveSettings(settings);
+                        }
+                        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                        {
+                            ImGui::SetTooltip("Scale the inner area to fit the screen. (experimental)\n"
+                                              "Recommended for video only, not for gaming. Mouse input will not be accurate.");
+                        }
+                    }
                 }
                 else
                 {

@@ -34,6 +34,7 @@ D3D11_BOX GetMirroredBox(D3D11_BOX box, UINT width, UINT height)
 
 AmbientLight::AmbientLight()
     : m_effectRendered(false),
+    m_zoomRendered(false),
     m_presented(false),
     m_gameWidth(0),
     m_gameHeight(0),
@@ -516,18 +517,68 @@ bool AmbientLight::RenderEffects()
             m_processedBlurTexture, src.left, src.top, RECT_WIDTH(src), RECT_HEIGHT(src), flip);
     }
 
+    m_zoomRendered = false;
     if (m_settings.autoDetectionInner)
     {
         if (m_blackBars.size() == 4)
         {
-            // clear the inner box in the effect texture
-            ComPtr<ID3D11DeviceContext1> deferred1 = nullptr;
-            m_deferred.As(&deferred1);
-            if (deferred1)
+            if (m_settings.autoDetectionZoom)
             {
-                float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-                D3D11_RECT rects[2] = { m_blackBars[2].toRect(), m_blackBars[3].toRect() };
-                deferred1->ClearView(m_effectCanvasTexture.GetRTV(), color, &rects[0], 2);
+                RECT innerRect = { 0 };
+                // find the inner box
+                if (m_blackBars[0].position == BlackBarPosition::Left)
+                {
+                    innerRect.left = 0;
+                    innerRect.right = m_gameWidth;
+                    innerRect.top = m_blackBars[2].height;
+                    innerRect.bottom = m_gameHeight - m_blackBars[3].height;
+                }
+                else
+                {
+                    innerRect.left = m_blackBars[2].width;
+                    innerRect.right = m_gameWidth - m_blackBars[3].width;
+                    innerRect.top = 0;
+                    innerRect.bottom = m_gameHeight;
+                }
+
+                if (RECT_WIDTH(innerRect) > 0 && RECT_HEIGHT(innerRect) > 0)
+                {
+                    // zoom rect
+                    float windowAspect = (float)m_windowWidth / (float)m_windowHeight;
+                    float innerAspect = (float)RECT_WIDTH(innerRect) / (float)RECT_HEIGHT(innerRect);
+                    RECT zoomedRect = { 0, 0, m_windowWidth, m_windowHeight };
+                    if (innerAspect <= windowAspect)
+                    {
+                        // inner is wider, zoom based on height
+                        UINT zoomedWidth = (UINT)(RECT_HEIGHT(innerRect) * windowAspect);
+                        zoomedRect.left = (m_windowWidth - zoomedWidth) / 2;
+                        zoomedRect.right = zoomedRect.left + zoomedWidth;
+                    }
+                    else
+                    {
+                        // inner is taller, zoom based on width
+                        UINT zoomedHeight = (UINT)(RECT_WIDTH(innerRect) / windowAspect);
+                        zoomedRect.top = (m_windowHeight - zoomedHeight) / 2;
+                        zoomedRect.bottom = zoomedRect.top + zoomedHeight;
+                    }
+                    // now copy the zoomed inner box to the effect texture
+                    m_copy.Render(m_deferred.Get(), m_effectCanvasTexture, zoomedRect.left, zoomedRect.top, RECT_WIDTH(zoomedRect), RECT_HEIGHT(zoomedRect),
+                        m_gameTexture, innerRect.left, innerRect.top, RECT_WIDTH(innerRect), RECT_HEIGHT(innerRect));
+
+                    m_zoomRendered = true;
+                }
+            }
+            else
+            {
+                // clear the inner box in the effect texture
+                ComPtr<ID3D11DeviceContext1> deferred1 = nullptr;
+                m_deferred.As(&deferred1);
+                if (deferred1)
+                {
+                    float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                    D3D11_RECT rects[2] = { m_blackBars[2].toRect(), m_blackBars[3].toRect() };
+                    deferred1->ClearView(m_effectCanvasTexture.GetRTV(), color, &rects[0], 2);
+                }
             }
         }
     }
@@ -579,7 +630,7 @@ void AmbientLight::RenderBackBuffer()
         if (m_settings.vignetteEnabled)
             m_vignette.Render(m_deferred.Get(), m_effectCanvasTexture);
 
-        if (m_settings.useAutoDetection && m_settings.autoDetectionLightMask)
+        if (m_settings.useAutoDetection && m_settings.autoDetectionLightMask && !m_zoomRendered)
             m_detection.RenderLumaMask(m_deferred.Get(), m_effectCanvasTexture);
     }
 
@@ -604,6 +655,12 @@ void AmbientLight::Present()
     if (m_showConfigWindow || m_clearConfigWindow)
     {
         m_clearConfigWindow = false;
+        m_swapchain->Present(1, 0);
+        m_presented = true;
+    }
+    else if (m_zoomRendered)
+    {
+        // if zoom is enabled with inner bars, always present the whole backbuffer to avoid artifacts on the zoomed inner box
         m_swapchain->Present(1, 0);
         m_presented = true;
     }

@@ -221,6 +221,9 @@ bool ReadSettings(AppSettings& settings)
     bool autoDetectionInner = DEFAULT_AUTO_DETECTION_INNER;
     inipp::get_value(ini.sections["Game"], "AutoDetectionInner", autoDetectionInner);
 
+    bool autoDetectionZoom = DEFAULT_AUTO_DETECTION_ZOOM;
+    inipp::get_value(ini.sections["Game"], "AutoDetectionZoom", autoDetectionZoom);
+
     bool showInTaskbar = DEFAULT_SHOW_IN_TASKBAR;
     inipp::get_value(ini.sections["UI"], "ShowInTaskbar", showInTaskbar);
 
@@ -365,6 +368,7 @@ void SaveSettings(AppSettings& settings)
     ini.sections["Game"]["AutoDetectionReservedWidth"] = std::to_string(settings.autoDetectionReservedWidth);
     ini.sections["Game"]["AutoDetectionReservedHeight"] = std::to_string(settings.autoDetectionReservedHeight);
     ini.sections["Game"]["AutoDetectionInner"] = settings.autoDetectionInner ? "true" : "false";
+    ini.sections["Game"]["AutoDetectionZoom"] = settings.autoDetectionZoom ? "true" : "false";
     ini.sections["Game"]["HDRSupport"] = settings.hdrSupport ? "true" : "false";
     ini.sections["UI"]["ShowInTaskbar"] = settings.showInTaskbar ? "true" : "false";
     ini.sections["UI"]["PopupConfigOnFocus"] = settings.popupConfigOnFocus ? "true" : "false";

@@ -57,6 +57,7 @@ private:
 
     bool m_effectRendered;
     bool m_presented;
+    bool m_zoomRendered;
 
     UINT m_gameWidth;
     UINT m_gameHeight;
