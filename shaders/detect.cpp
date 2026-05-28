@@ -90,7 +90,7 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
 
         hr = device->CreateComputeShader(g_mask_mainUNorm, sizeof(g_mask_mainUNorm), nullptr, &m_lumaMaskShaderUNorm);
         RETURN_IF_FAILED(hr);
-        
+
     }
 
 
@@ -181,6 +181,84 @@ inline bool isLineMostlyBlack(const float* data, UINT length, UINT stride, float
     return (variance <= varianceThreshold);
 }
 
+// The Core Center-Out Algorithm - Returns the size of the bar in pixels
+UINT FindBarSizeCenterOut(const float* luma, UINT pitch, int width, int height,
+    bool isVerticalScan, int startIdx, int step, int edgeIdx,
+    float blackThreshold, float blackRatio, float blackVariance, int minBarSize)
+{
+    // Tracks the furthest line out that we are SURE belongs to the continuous content
+    int lastKnownContentLine = startIdx;
+
+    int lineLength = isVerticalScan ? width : height;
+    UINT stride = isVerticalScan ? 1 : pitch;
+
+    // Scan from the center out to the edge
+    for (int i = startIdx; (step > 0) ? (i <= edgeIdx) : (i >= edgeIdx); i += step)
+    {
+        const float* linePtr = isVerticalScan ? (luma + i * pitch) : (luma + i);
+        
+        if (!isLineMostlyBlack(linePtr, lineLength, stride, blackThreshold, blackRatio, blackVariance))
+        {
+            int blockStart = i;
+            int blockLength = 0;
+
+            // 1. Measure the continuous block of bright lines ahead of us
+            while ((step > 0 ? (i <= edgeIdx) : (i >= edgeIdx)) &&
+                !isLineMostlyBlack(isVerticalScan ? (luma + i * pitch) : (luma + i),
+                    lineLength, stride, blackThreshold, blackRatio, blackVariance))
+            {
+                blockLength++;
+                i += step;
+            }
+
+            // 2. Dynamically calculate the verified content size so far (one-sided from center)
+            int currentContentHalfSize = std::abs(lastKnownContentLine - startIdx);
+
+            // Safety fallback: if we are right at the center and size is 0, provide a tiny baseline 
+            // floor so we don't multiply by zero on the first few iterations.
+            if (currentContentHalfSize < 4) { currentContentHalfSize = 4; }
+
+            // 3. Define our adaptive thresholds relative to the current content footprint
+            // Subtitles/Progress bars rarely exceed 5% to 8% of a video's half-dimension.
+            int adaptiveUiThicknessMax = static_cast<int>(currentContentHalfSize * 0.08f);
+            int adaptiveGapMax = static_cast<int>(currentContentHalfSize * 0.05f);
+
+            int blackGapLeftBehind = std::abs(blockStart - lastKnownContentLine);
+
+            // 4. Proportional Evaluation
+            if (blockLength > adaptiveUiThicknessMax || blackGapLeftBehind <= adaptiveGapMax)
+            {
+                // It's either a massive block of light (content after a dark scene)
+                // OR it's a thin line sitting almost directly flush against the content frame.
+                // Extend the content boundaries to include this block.
+                lastKnownContentLine = i - step;
+            }
+            else
+            {
+                // It's a thin bright block isolated by a substantial black gap.
+                // Structurally, this behaves exactly like a UI element. Ignore it.
+            }
+
+            // Adjust loop index back by one step because the while loop went one line too far
+            i -= step;
+        }
+    }
+
+    // Convert last known content line into the final black bar size
+    int barSize = 0;
+    if (step < 0)
+    {
+        barSize = lastKnownContentLine;
+    }
+    else
+    {
+        int maxEdge = isVerticalScan ? height : width;
+        barSize = maxEdge - 1 - lastKnownContentLine;
+    }
+
+    return (barSize < minBarSize) ? 0 : static_cast<UINT>(barSize);
+}
+
 HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
 {
     HRESULT hr = S_OK;
@@ -259,16 +337,37 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     // Adjust threshold for HDR10 PQ content
     switch (m_colorSpace)
     {
-        case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
-            maxBlackThreshold = HDR10_LUMA_THRESHOLD;
-            blackVariance = 1e-10f;
-            break;
+    case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
+        maxBlackThreshold = HDR10_LUMA_THRESHOLD;
+        blackVariance = 1e-10f;
+        break;
     }
 
     // m_blackThreshold is user setting between 0.0 and 1.0
     float blackThreshold = m_blackThreshold * maxBlackThreshold;
 
-    
+#ifndef OLD_DETECTION
+    // inside out detection
+    const int hCenter = m_width / 2;
+    const int vCenter = m_height / 2;
+
+    m_topBar = FindBarSizeCenterOut(luma, pitch, m_width, m_height,
+        true, vCenter, -1, 0,
+        blackThreshold, m_blackRatio, blackVariance, minBarSize);
+
+    m_bottomBar = FindBarSizeCenterOut(luma, pitch, m_width, m_height,
+        true, vCenter, 1, m_height - 1,
+        blackThreshold, m_blackRatio, blackVariance, minBarSize);
+
+    m_leftBar = FindBarSizeCenterOut(luma, pitch, m_width, m_height,
+        false, hCenter, -1, 0,
+        blackThreshold, m_blackRatio, blackVariance, minBarSize);
+
+    m_rightBar = FindBarSizeCenterOut(luma, pitch, m_width, m_height,
+        false, hCenter, 1, m_width - 1,
+        blackThreshold, m_blackRatio, blackVariance, minBarSize);
+
+#else
     m_topBar = 0;
     for (UINT y = 0; y < UINT(m_height); ++y) {
         const float* row = luma + y * pitch;
@@ -316,6 +415,7 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
             break;
     }
     m_rightBar = m_rightBar < minBarSize ? 0 : m_rightBar;
+#endif
 
     //OutputDebugStringA((std::to_string(m_topBarEnd) + "," + std::to_string(m_bottomBarStart) + "," +
     //    std::to_string(m_leftBarEnd) + "," + std::to_string(m_rightBarStart) + "\n").c_str());
@@ -345,7 +445,7 @@ HRESULT Detection::RenderLumaMask(ID3D11DeviceContext* context, TextureView targ
     // Set the shader
     if (target_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT)
     {
-        context->CSSetShader(m_lumaMaskShader.Get(), nullptr, 0); 
+        context->CSSetShader(m_lumaMaskShader.Get(), nullptr, 0);
     }
     else
     {
@@ -388,7 +488,7 @@ std::vector<BlackBar> Detection::GetFixedBars(UINT windowWidth, UINT windowHeigh
         gameWidth = (UINT)windowWidth;
         gameHeight = (UINT)std::round((float)gameWidth / aspect);
     }
-    
+
     if (aspect > windowAspect)
     {
         UINT barHeight = (windowHeight - gameHeight) / 2;

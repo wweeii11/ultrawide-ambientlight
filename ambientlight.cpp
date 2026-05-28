@@ -541,12 +541,12 @@ bool AmbientLight::RenderEffects()
                     innerRect.bottom = m_gameHeight;
                 }
 
-                if (RECT_WIDTH(innerRect) > 0 && RECT_HEIGHT(innerRect) > 0)
+                if (RECT_WIDTH(innerRect) >= LONG(m_windowWidth / 2) && RECT_HEIGHT(innerRect) > LONG(m_windowHeight / 2))
                 {
                     // zoom rect
                     float windowAspect = (float)m_windowWidth / (float)m_windowHeight;
                     float innerAspect = (float)RECT_WIDTH(innerRect) / (float)RECT_HEIGHT(innerRect);
-                    RECT zoomedRect = { 0, 0, m_windowWidth, m_windowHeight };
+                    RECT zoomedRect = { 0, 0, (long)m_windowWidth, (long)m_windowHeight };
                     if (innerAspect <= windowAspect)
                     {
                         // inner is wider, zoom based on height
