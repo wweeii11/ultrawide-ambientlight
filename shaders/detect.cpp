@@ -195,6 +195,38 @@ UINT FindBarSizeCenterOut(const float* luma, UINT pitch, int width, int height,
     // Scan from the center out to the edge
     for (int i = startIdx; (step > 0) ? (i <= edgeIdx) : (i >= edgeIdx); i += step)
     {
+        // 1. Calculate current remaining runway to the physical edge
+        int linesRemainingToEdge = (step < 0) ? i : (edgeIdx - i);
+
+        // 2. Calculate the current running content half-dimension
+        int currentContentHalfSize = std::abs(lastKnownContentLine - startIdx);
+        if (currentContentHalfSize < 4) { currentContentHalfSize = 4; }
+
+        // 3. Derive our adaptive UI thickness threshold dynamically
+        int adaptiveUiThicknessMax = static_cast<int>(currentContentHalfSize * 0.08f);
+
+        // --- ENHANCED HARD EARLY BREAKS ---
+        if (lastKnownContentLine == (i - step))
+        {
+            // Condition A: We are currently inside continuous content.
+            // If the remaining space can't even hold our minimum bar requirement, stop.
+            if (linesRemainingToEdge < minBarSize)
+            {
+                return 0;
+            }
+        }
+        else
+        {
+            // Condition B: We are currently floating in a potential black bar area.
+            // If the remaining space is smaller than our adaptive UI limit, any new content 
+            // would automatically be classified as UI. We can lock the border here.
+            if (linesRemainingToEdge <= adaptiveUiThicknessMax)
+            {
+                break; // Break the loop and calculate the bar size based on lastKnownContentLine
+            }
+        }
+        // ----------------------------------
+
         const float* linePtr = isVerticalScan ? (luma + i * pitch) : (luma + i);
         
         if (!isLineMostlyBlack(linePtr, lineLength, stride, blackThreshold, blackRatio, blackVariance))
@@ -218,11 +250,7 @@ UINT FindBarSizeCenterOut(const float* luma, UINT pitch, int width, int height,
             // floor so we don't multiply by zero on the first few iterations.
             if (currentContentHalfSize < 4) { currentContentHalfSize = 4; }
 
-            // 3. Define our adaptive thresholds relative to the current content footprint
-            // Subtitles/Progress bars rarely exceed 5% to 8% of a video's half-dimension.
-            int adaptiveUiThicknessMax = static_cast<int>(currentContentHalfSize * 0.08f);
             int adaptiveGapMax = static_cast<int>(currentContentHalfSize * 0.05f);
-
             int blackGapLeftBehind = std::abs(blockStart - lastKnownContentLine);
 
             // 4. Proportional Evaluation
