@@ -227,12 +227,18 @@ private:
 __declspec(align(16))
 class PerfTimer {
 public:
-    PerfTimer() : m_name("Unnamed"), m_maxRecords(10) {
+    PerfTimer() :
+        m_name("Unnamed"),
+        m_maxRecords(10),
+        m_records(),
+        m_frequency({ 0 }),
+        m_startTime({ 0 })
+    {
         QueryPerformanceFrequency(&m_frequency);
     }
 
     PerfTimer(std::string name, size_t maxRecords = 10)
-        : m_name(name), m_maxRecords(maxRecords) {
+        : m_name(name), m_maxRecords(maxRecords), m_records(), m_frequency({ 0 }), m_startTime({ 0 }) {
         QueryPerformanceFrequency(&m_frequency);
     }
 
@@ -247,13 +253,11 @@ public:
         if (m_records.size() > m_maxRecords) m_records.pop_front();
     }
 
-    // New: Sends the average and last record to DebugView
-    void PrintToDebug() const {
+    std::string ToString() const {
         char buffer[256];
-        sprintf_s(buffer, "[%s] Avg: %.3fms | Last: %.3fms\n",
+        sprintf_s(buffer, "[%s] Avg: %.3fms | Last: %.3fms",
             m_name.c_str(), GetAverage(), GetLast());
-
-        OutputDebugStringA(buffer);
+        return std::string(buffer);
     }
 
     double GetAverage() const {
@@ -295,3 +299,35 @@ public:
 private:
     ULONGLONG m_last;
 };
+
+inline const char* DXGIColorSpaceToString(DXGI_COLOR_SPACE_TYPE colorSpace) {
+    switch (colorSpace) {
+    case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709:           return "DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709";
+    case DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709:           return "DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709";
+    case DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P709:         return "DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P709";
+    case DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P2020:        return "DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P2020";
+    case DXGI_COLOR_SPACE_RESERVED:                         return "DXGI_COLOR_SPACE_RESERVED";
+    case DXGI_COLOR_SPACE_YCBCR_FULL_G22_NONE_P709_X601:    return "DXGI_COLOR_SPACE_YCBCR_FULL_G22_NONE_P709_X601";
+    case DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P601:       return "DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P601";
+    case DXGI_COLOR_SPACE_YCBCR_FULL_G22_LEFT_P601:         return "DXGI_COLOR_SPACE_YCBCR_FULL_G22_LEFT_P601";
+    case DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709:       return "DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709";
+    case DXGI_COLOR_SPACE_YCBCR_FULL_G22_LEFT_P709:         return "DXGI_COLOR_SPACE_YCBCR_FULL_G22_LEFT_P709";
+    case DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P2020:      return "DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P2020";
+    case DXGI_COLOR_SPACE_YCBCR_FULL_G22_LEFT_P2020:        return "DXGI_COLOR_SPACE_YCBCR_FULL_G22_LEFT_P2020";
+    case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:        return "DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020";
+    case DXGI_COLOR_SPACE_YCBCR_STUDIO_G2084_LEFT_P2020:    return "DXGI_COLOR_SPACE_YCBCR_STUDIO_G2084_LEFT_P2020";
+    case DXGI_COLOR_SPACE_RGB_STUDIO_G2084_NONE_P2020:      return "DXGI_COLOR_SPACE_RGB_STUDIO_G2084_NONE_P2020";
+    case DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_TOPLEFT_P2020:   return "DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_TOPLEFT_P2020";
+    case DXGI_COLOR_SPACE_YCBCR_STUDIO_G2084_TOPLEFT_P2020: return "DXGI_COLOR_SPACE_YCBCR_STUDIO_G2084_TOPLEFT_P2020";
+    case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P2020:          return "DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P2020";
+    case DXGI_COLOR_SPACE_YCBCR_STUDIO_GHLG_TOPLEFT_P2020:  return "DXGI_COLOR_SPACE_YCBCR_STUDIO_GHLG_TOPLEFT_P2020";
+    case DXGI_COLOR_SPACE_YCBCR_FULL_GHLG_TOPLEFT_P2020:    return "DXGI_COLOR_SPACE_YCBCR_FULL_GHLG_TOPLEFT_P2020";
+    case DXGI_COLOR_SPACE_RGB_STUDIO_G24_NONE_P709:         return "DXGI_COLOR_SPACE_RGB_STUDIO_G24_NONE_P709";
+    case DXGI_COLOR_SPACE_RGB_STUDIO_G24_NONE_P2020:        return "DXGI_COLOR_SPACE_RGB_STUDIO_G24_NONE_P2020";
+    case DXGI_COLOR_SPACE_YCBCR_STUDIO_G24_LEFT_P709:       return "DXGI_COLOR_SPACE_YCBCR_STUDIO_G24_LEFT_P709";
+    case DXGI_COLOR_SPACE_YCBCR_STUDIO_G24_LEFT_P2020:      return "DXGI_COLOR_SPACE_YCBCR_STUDIO_G24_LEFT_P2020";
+    case DXGI_COLOR_SPACE_YCBCR_STUDIO_G24_TOPLEFT_P2020:   return "DXGI_COLOR_SPACE_YCBCR_STUDIO_G24_TOPLEFT_P2020";
+    case DXGI_COLOR_SPACE_CUSTOM:                           return "DXGI_COLOR_SPACE_CUSTOM";
+    default:                                                return "UNKNOWN_DXGI_COLOR_SPACE";
+    }
+}

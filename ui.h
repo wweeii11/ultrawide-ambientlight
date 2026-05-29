@@ -6,5 +6,5 @@
 
 LRESULT UiWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 void InitUI(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context, AppSettings& settings);
-bool RenderUI(HWND hwnd, AppSettings& settings, UINT gameWidth, UINT gameHeight, bool resetPos);
+bool RenderUI(HWND hwnd, AppSettings& settings, UINT gameWidth, UINT gameHeight, bool resetPos, std::string log);
 void UpdateWindowFlags(HWND hwnd, AppSettings& settings);

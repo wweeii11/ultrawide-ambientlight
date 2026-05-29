@@ -55,6 +55,7 @@ private:
     Detection m_detection;
     ElapsedTimer m_detectionTimer;
 
+    bool m_ready;
     bool m_effectRendered;
     bool m_presented;
     bool m_zoomRendered;
@@ -101,4 +102,6 @@ private:
     void ShowConfigWindow(bool show);
     bool m_showConfigWindow;
     bool m_clearConfigWindow;
+
+    std::string GetDebugString();
 };

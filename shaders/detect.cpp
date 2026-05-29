@@ -1,10 +1,13 @@
 #include "detect.h"
+#include "detectCpu.h"
 #include "d3dcompiler.h"
 #include "luma_mainSDR_bin.h"
 #include "luma_mainSCRGB_bin.h"
 #include "luma_mainHDR10_bin.h"
 #include "mask_main_bin.h"
 #include "mask_mainUNorm_bin.h"
+#include "luma_CSRowAnalysis_bin.h"
+#include "luma_CSColAnalysis_bin.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -15,42 +18,27 @@ using namespace DirectX;
 #define SDR_LUMA_THRESHOLD 0.01f
 #define HDR10_LUMA_THRESHOLD 0.0001f
 
+__declspec(align(16))
+struct DetectionParams {
+    UINT  Width;
+    UINT  Height;
+    float BlackThreshold;
+    float BlackRatio;
+    float VarianceThreshold;
+    //float Padding[3];
+};
+
 Detection::Detection()
+    : m_width(0), m_height(0),
+    m_blackThreshold(0.0f), m_blackRatio(0.0f), m_symmetricBars(false),
+    m_topBar(0), m_bottomBar(0), m_leftBar(0), m_rightBar(0),
+    m_reservedWidth(0), m_reservedHeight(0),
+    m_colorSpace(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709)
 {
 }
 
 Detection::~Detection()
 {
-}
-
-static void CreateLumaMaskAndStaging(
-    ID3D11Device* dev,
-    UINT width,
-    UINT height,
-    ID3D11Texture2D** gpuTexOut,           // UAV-capable DEFAULT buffer
-    ID3D11Texture2D** stagingOut)          // STAGING copy for CPU read
-{
-    D3D11_TEXTURE2D_DESC textureDesc;
-    ZeroMemory(&textureDesc, sizeof(textureDesc));
-
-    textureDesc.Width = width;
-    textureDesc.Height = height;
-    textureDesc.MipLevels = 1;
-    textureDesc.ArraySize = 1;
-    textureDesc.Format = DXGI_FORMAT_R32_FLOAT;
-    textureDesc.SampleDesc.Count = 1;
-    textureDesc.SampleDesc.Quality = 0;
-    textureDesc.Usage = D3D11_USAGE_DEFAULT;
-    textureDesc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
-    textureDesc.CPUAccessFlags = 0;
-    textureDesc.MiscFlags = 0;
-    dev->CreateTexture2D(&textureDesc, nullptr, gpuTexOut);
-
-    // Staging texture
-    textureDesc.Usage = D3D11_USAGE_STAGING;
-    textureDesc.BindFlags = 0;
-    textureDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    dev->CreateTexture2D(&textureDesc, nullptr, stagingOut);
 }
 
 HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context,
@@ -91,35 +79,25 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
         hr = device->CreateComputeShader(g_mask_mainUNorm, sizeof(g_mask_mainUNorm), nullptr, &m_lumaMaskShaderUNorm);
         RETURN_IF_FAILED(hr);
 
+        hr = device->CreateComputeShader(g_luma_CSRowAnalysis, sizeof(g_luma_CSRowAnalysis), nullptr, &m_rowAnalysisShader);
+        RETURN_IF_FAILED(hr);
+
+        hr = device->CreateComputeShader(g_luma_CSColAnalysis, sizeof(g_luma_CSColAnalysis), nullptr, &m_colAnalysisShader);
+        RETURN_IF_FAILED(hr);
     }
 
 
     if (m_width != width || m_height != height)
     {
-        ID3D11Texture2D* lumaTex = nullptr;
-        CreateLumaMaskAndStaging(
-            device.Get(),
-            width,
-            height,
-            &lumaTex,
-            &m_lumaStaging);
-
-        if (lumaTex)
-        {
-            m_luma.CreateViews(m_device.Get(), lumaTex, false, true, true);
-            lumaTex->Release();
-        }
-    }
-
-    if (m_width != width || m_height != height)
-    {
+        m_width = width;
+        m_height = height;
         m_topBar = 0;
         m_bottomBar = m_height;
         m_leftBar = 0;
         m_rightBar = m_width;
+
+        CreateBuffers();
     }
-    m_width = width;
-    m_height = height;
 
     m_blackThreshold = blackThreshold;
     m_blackRatio = blackRatio;
@@ -147,153 +125,298 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
     return hr;
 }
 
-inline bool isLineMostlyBlack(const float* data, UINT length, UINT stride, float blackThreshold, float blackRatio, float varianceThreshold)
+HRESULT Detection::CreateBuffers()
 {
-    int darkPixelCount = 0;
-    float sum = 0.0f;
-    float sumSq = 0.0f;
+    HRESULT hr = S_OK;
 
-    for (UINT i = 0; i < length; ++i)
-    {
-        float pixel = data[i * stride];
-        if (pixel <= blackThreshold)
-        {
-            ++darkPixelCount;
-            sum += pixel;
-            sumSq += pixel * pixel;
-        }
-    }
+    ComPtr<ID3D11Texture2D> tex = nullptr;
 
-    if (darkPixelCount == 0)
-        return false;
+    D3D11_TEXTURE2D_DESC textureDesc;
+    ZeroMemory(&textureDesc, sizeof(textureDesc));
 
-    float darkRatio = (float)darkPixelCount / (float)length;
-    if (darkRatio < blackRatio)
-        return false;
+    textureDesc.Width = m_width;
+    textureDesc.Height = m_height;
+    textureDesc.MipLevels = 1;
+    textureDesc.ArraySize = 1;
+    textureDesc.Format = DXGI_FORMAT_R32_FLOAT;
+    textureDesc.SampleDesc.Count = 1;
+    textureDesc.SampleDesc.Quality = 0;
+    textureDesc.Usage = D3D11_USAGE_DEFAULT;
+    textureDesc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
+    textureDesc.CPUAccessFlags = 0;
+    textureDesc.MiscFlags = 0;
 
-    // Variance of the dark pixels only: Var = E[x^2] - E[x]^2
-    float n = (float)darkPixelCount;
-    float mean = sum / n;
-    float variance = (sumSq / n) - (mean * mean);
+    hr = m_device->CreateTexture2D(&textureDesc, nullptr, &tex);
+    RETURN_IF_FAILED(hr);
 
-    // True black (bars/chrome) has near-zero variance — all pixels clump around 0
-    // Dark HDR content has measurable variance even if all pixels are below threshold
-    return (variance <= varianceThreshold);
+    m_luma.CreateViews(m_device.Get(), tex.Get(), false, true, true);
+
+    // Staging texture
+    textureDesc.Usage = D3D11_USAGE_STAGING;
+    textureDesc.BindFlags = 0;
+    textureDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    m_device->CreateTexture2D(&textureDesc, nullptr, &tex);
+    RETURN_IF_FAILED(hr);
+
+    m_lumaStaging = tex;
+
+    // --- 1. CONSTANT BUFFER SETUP ---
+    D3D11_BUFFER_DESC cbDesc = {};
+    cbDesc.ByteWidth = sizeof(DetectionParams); // Ensure this struct is padded to 32 bytes
+    cbDesc.Usage = D3D11_USAGE_DEFAULT;
+    cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cbDesc.CPUAccessFlags = 0;
+    cbDesc.MiscFlags = 0;
+    cbDesc.StructureByteStride = 0;
+
+    hr = m_device->CreateBuffer(&cbDesc, nullptr, &m_constants);
+    RETURN_IF_FAILED(hr);
+
+    // --- 2. ROW ANALYSIS BUFFERS (Tracking vertical lines -> bounded by HEIGHT) ---
+    D3D11_BUFFER_DESC bufDesc = {};
+    bufDesc.ByteWidth = m_height * sizeof(UINT);
+    bufDesc.Usage = D3D11_USAGE_DEFAULT;
+    bufDesc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
+    bufDesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+    bufDesc.StructureByteStride = sizeof(UINT);
+
+    hr = m_device->CreateBuffer(&bufDesc, nullptr, &m_rowResults);
+    RETURN_IF_FAILED(hr);
+
+    D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+    uavDesc.Format = DXGI_FORMAT_UNKNOWN; // Correct for unstructured/structured arrays
+    uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+    uavDesc.Buffer.FirstElement = 0;
+    uavDesc.Buffer.NumElements = m_height; // Must equal height for row indexing
+    uavDesc.Buffer.Flags = 0;
+
+    hr = m_device->CreateUnorderedAccessView(m_rowResults.Get(), &uavDesc, &m_rowResultsUAV);
+    RETURN_IF_FAILED(hr);
+
+    // Row Staging Buffer for CPU readback
+    D3D11_BUFFER_DESC stageDesc = {};
+    stageDesc.ByteWidth = m_height * sizeof(UINT);
+    stageDesc.Usage = D3D11_USAGE_STAGING;
+    stageDesc.BindFlags = 0; // CRITICAL: Staging buffers cannot bind to the pipeline slots
+    stageDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    stageDesc.MiscFlags = 0;
+    stageDesc.StructureByteStride = 0;
+
+    hr = m_device->CreateBuffer(&stageDesc, nullptr, &m_rowStaging);
+    RETURN_IF_FAILED(hr);
+
+    // --- 3. COLUMN ANALYSIS BUFFERS (Tracking horizontal lines -> bounded by WIDTH) ---
+    bufDesc.ByteWidth = m_width * sizeof(UINT);
+    hr = m_device->CreateBuffer(&bufDesc, nullptr, &m_colResults);
+    RETURN_IF_FAILED(hr);
+
+    uavDesc.Buffer.NumElements = m_width; // Must equal width for column indexing
+    hr = m_device->CreateUnorderedAccessView(m_colResults.Get(), &uavDesc, &m_colResultsUAV);
+    RETURN_IF_FAILED(hr);
+
+    // Column Staging Buffer for CPU readback
+    stageDesc.ByteWidth = m_width * sizeof(UINT);
+    hr = m_device->CreateBuffer(&stageDesc, nullptr, &m_colStaging);
+    RETURN_IF_FAILED(hr);
+
+    return hr;
 }
 
-// The Core Center-Out Algorithm - Returns the size of the bar in pixels
-UINT FindBarSizeCenterOut(const float* luma, UINT pitch, int width, int height,
-    bool isVerticalScan, int startIdx, int step, int edgeIdx,
-    float blackThreshold, float blackRatio, float blackVariance, int minBarSize)
+HRESULT Detection::DispatchRowColAnalysis(ID3D11DeviceContext* context)
 {
-    // Tracks the furthest line out that we are SURE belongs to the continuous content
-    int lastKnownContentLine = startIdx;
+    HRESULT hr = S_OK;
 
-    int lineLength = isVerticalScan ? width : height;
-    UINT stride = isVerticalScan ? 1 : pitch;
-
-    // Scan from the center out to the edge
-    for (int i = startIdx; (step > 0) ? (i <= edgeIdx) : (i >= edgeIdx); i += step)
+    // maximum threshold for black detection
+    float maxBlackThreshold = SDR_LUMA_THRESHOLD;
+    float blackVariance = 1e-6f;
+    // Adjust threshold for HDR10 PQ content
+    switch (m_colorSpace)
     {
-        // 1. Calculate current remaining runway to the physical edge
-        int linesRemainingToEdge = (step < 0) ? i : (edgeIdx - i);
-
-        // 2. Calculate the current running content half-dimension
-        int currentContentHalfSize = std::abs(lastKnownContentLine - startIdx);
-        if (currentContentHalfSize < 4) { currentContentHalfSize = 4; }
-
-        // 3. Derive our adaptive UI thickness threshold dynamically
-        int adaptiveUiThicknessMax = static_cast<int>(currentContentHalfSize * 0.08f);
-
-        // --- ENHANCED HARD EARLY BREAKS ---
-        if (lastKnownContentLine == (i - step))
-        {
-            // Condition A: We are currently inside continuous content.
-            // If the remaining space can't even hold our minimum bar requirement, stop.
-            if (linesRemainingToEdge < minBarSize)
-            {
-                return 0;
-            }
-        }
-        else
-        {
-            // Condition B: We are currently floating in a potential black bar area.
-            // If the remaining space is smaller than our adaptive UI limit, any new content 
-            // would automatically be classified as UI. We can lock the border here.
-            if (linesRemainingToEdge <= adaptiveUiThicknessMax)
-            {
-                break; // Break the loop and calculate the bar size based on lastKnownContentLine
-            }
-        }
-        // ----------------------------------
-
-        const float* linePtr = isVerticalScan ? (luma + i * pitch) : (luma + i);
-        
-        if (!isLineMostlyBlack(linePtr, lineLength, stride, blackThreshold, blackRatio, blackVariance))
-        {
-            int blockStart = i;
-            int blockLength = 0;
-
-            // 1. Measure the continuous block of bright lines ahead of us
-            while ((step > 0 ? (i <= edgeIdx) : (i >= edgeIdx)) &&
-                !isLineMostlyBlack(isVerticalScan ? (luma + i * pitch) : (luma + i),
-                    lineLength, stride, blackThreshold, blackRatio, blackVariance))
-            {
-                blockLength++;
-                i += step;
-            }
-
-            // 2. Dynamically calculate the verified content size so far (one-sided from center)
-            int currentContentHalfSize = std::abs(lastKnownContentLine - startIdx);
-
-            // Safety fallback: if we are right at the center and size is 0, provide a tiny baseline 
-            // floor so we don't multiply by zero on the first few iterations.
-            if (currentContentHalfSize < 4) { currentContentHalfSize = 4; }
-
-            int adaptiveGapMax = static_cast<int>(currentContentHalfSize * 0.05f);
-            int blackGapLeftBehind = std::abs(blockStart - lastKnownContentLine);
-
-            // 4. Proportional Evaluation
-            if (blockLength > adaptiveUiThicknessMax || blackGapLeftBehind <= adaptiveGapMax)
-            {
-                // It's either a massive block of light (content after a dark scene)
-                // OR it's a thin line sitting almost directly flush against the content frame.
-                // Extend the content boundaries to include this block.
-                lastKnownContentLine = i - step;
-            }
-            else
-            {
-                // It's a thin bright block isolated by a substantial black gap.
-                // Structurally, this behaves exactly like a UI element. Ignore it.
-            }
-
-            // Adjust loop index back by one step because the while loop went one line too far
-            i -= step;
-        }
+    case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
+        maxBlackThreshold = HDR10_LUMA_THRESHOLD;
+        blackVariance = 1e-10f;
+        break;
     }
 
-    // Convert last known content line into the final black bar size
-    int barSize = 0;
-    if (step < 0)
-    {
-        barSize = lastKnownContentLine;
-    }
-    else
-    {
-        int maxEdge = isVerticalScan ? height : width;
-        barSize = maxEdge - 1 - lastKnownContentLine;
-    }
+    // m_blackThreshold is user setting between 0.0 and 1.0
+    float blackThreshold = m_blackThreshold * maxBlackThreshold;
 
-    return (barSize < minBarSize) ? 0 : static_cast<UINT>(barSize);
+    DetectionParams params = {};
+    params.Width = m_width;
+    params.Height = m_height;
+    params.BlackThreshold = blackThreshold;
+    params.BlackRatio = m_blackRatio;
+    params.VarianceThreshold = blackVariance;
+
+    context->UpdateSubresource(m_constants.Get(), 0, nullptr, &params, 0, 0);
+    context->CSSetConstantBuffers(0, 1, m_constants.GetAddressOf());
+
+    // Run Row Analysis Shader
+    ID3D11ShaderResourceView* srv = m_luma.GetSRV();
+    ID3D11UnorderedAccessView* uavs = m_rowResultsUAV.Get();
+
+    context->CSSetShader(m_rowAnalysisShader.Get(), nullptr, 0);
+    context->CSSetShaderResources(1, 1, &srv);
+    context->CSSetUnorderedAccessViews(1, 1, &uavs, nullptr);
+    context->Dispatch((m_height + 63) / 64, 1, 1);
+
+    ID3D11UnorderedAccessView* nullUAV = nullptr;
+    context->CSSetUnorderedAccessViews(1, 1, &nullUAV, nullptr);
+
+    // Run Column Analysis Shader
+    uavs = m_colResultsUAV.Get();
+
+    context->CSSetShader(m_colAnalysisShader.Get(), nullptr, 0);
+    context->CSSetShaderResources(1, 1, &srv);
+    context->CSSetUnorderedAccessViews(1, 1, &uavs, nullptr);
+    context->Dispatch((m_width + 63) / 64, 1, 1);
+
+    // clean up
+    context->CSSetUnorderedAccessViews(1, 1, &nullUAV, nullptr);
+    ID3D11ShaderResourceView* nullSRV = nullptr;
+    context->CSSetShaderResources(1, 1, &nullSRV);
+    ID3D11Buffer* nullBuffer = nullptr;
+    context->CSSetConstantBuffers(1, 1, &nullBuffer);
+
+    context->CopyResource(m_rowStaging.Get(), m_rowResults.Get());
+    context->CopyResource(m_colStaging.Get(), m_colResults.Get());
+
+    return hr;
+}
+
+HRESULT Detection::FetchRowResults(ID3D11DeviceContext* pContext)
+{
+    HRESULT hr = S_OK;
+    D3D11_MAPPED_SUBRESOURCE mappedFlags;
+    hr = pContext->Map(m_rowStaging.Get(), 0, D3D11_MAP_READ, 0, &mappedFlags);
+    RETURN_IF_FAILED(hr);
+
+    const UINT* rowActiveFlags = reinterpret_cast<const UINT*>(mappedFlags.pData);
+    const int vCenter = m_height / 2;
+
+    m_topBar = FindBarSizeCenterOutWithFlags(rowActiveFlags, vCenter, -1, 0);
+    m_bottomBar = FindBarSizeCenterOutWithFlags(rowActiveFlags, vCenter, 1, m_height - 1);
+
+    pContext->Unmap(m_rowStaging.Get(), 0);
+    return hr;
+}
+
+HRESULT Detection::FetchColResults(ID3D11DeviceContext* pContext)
+{
+    HRESULT hr = S_OK;
+    D3D11_MAPPED_SUBRESOURCE mappedFlags;
+    hr = pContext->Map(m_colStaging.Get(), 0, D3D11_MAP_READ, 0, &mappedFlags);
+    RETURN_IF_FAILED(hr);
+
+    const UINT* colActiveFlags = reinterpret_cast<const UINT*>(mappedFlags.pData);
+    const int hCenter = m_width / 2;
+
+    m_leftBar = FindBarSizeCenterOutWithFlags(colActiveFlags, hCenter, -1, 0);
+    m_rightBar = FindBarSizeCenterOutWithFlags(colActiveFlags, hCenter, 1, m_width - 1);
+
+    pContext->Unmap(m_colStaging.Get(), 0);
+    return hr;
 }
 
 HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
 {
     HRESULT hr = S_OK;
 
+    hr = DispatchLuma(context, target);
+    RETURN_IF_FAILED(hr);
+
+    hr = DispatchRowColAnalysis(context);
+    RETURN_IF_FAILED(hr);
+
+    hr = FetchRowResults(context);
+    RETURN_IF_FAILED(hr);
+    hr = FetchColResults(context);
+    RETURN_IF_FAILED(hr);
+
+#ifdef CPU_DETECTION
+    // maximum threshold for black detection
+    float maxBlackThreshold = SDR_LUMA_THRESHOLD;
+    float blackVariance = 1e-6f;
+    // Adjust threshold for HDR10 PQ content
+    switch (m_colorSpace)
+    {
+    case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
+        maxBlackThreshold = HDR10_LUMA_THRESHOLD;
+        blackVariance = 1e-10f;
+        break;
+    }
+
+    // m_blackThreshold is user setting between 0.0 and 1.0
+    float blackThreshold = m_blackThreshold * maxBlackThreshold;
+
+    // minimum detection is 16px
+    UINT minBarSize = 16;
+
+    context->CopyResource(m_lumaStaging.Get(), m_luma.GetTexture());
+
+    D3D11_MAPPED_SUBRESOURCE mappedLuma = {};
+    context->Map(m_lumaStaging.Get(), 0, D3D11_MAP_READ, 0, &mappedLuma);
+
+    const float* luma = reinterpret_cast<const float*>(mappedLuma.pData);
+    const UINT pitch = mappedLuma.RowPitch / sizeof(float);
+
+    // inside out detection
+    const int hCenter = m_width / 2;
+    const int vCenter = m_height / 2;
+
+    m_topBar = FindBarSizeCenterOut(luma, pitch, m_width, m_height,
+        true, vCenter, -1, 0,
+        blackThreshold, m_blackRatio, blackVariance, minBarSize);
+
+    m_bottomBar = FindBarSizeCenterOut(luma, pitch, m_width, m_height,
+        true, vCenter, 1, m_height - 1,
+        blackThreshold, m_blackRatio, blackVariance, minBarSize);
+
+    m_leftBar = FindBarSizeCenterOut(luma, pitch, m_width, m_height,
+        false, hCenter, -1, 0,
+        blackThreshold, m_blackRatio, blackVariance, minBarSize);
+
+    m_rightBar = FindBarSizeCenterOut(luma, pitch, m_width, m_height,
+        false, hCenter, 1, m_width - 1,
+        blackThreshold, m_blackRatio, blackVariance, minBarSize);
+
+    context->Unmap(m_lumaStaging.Get(), 0);
+#endif
+
+    //OutputDebugStringA((std::to_string(m_topBarEnd) + "," + std::to_string(m_bottomBarStart) + "," +
+    //    std::to_string(m_leftBarEnd) + "," + std::to_string(m_rightBarStart) + "\n").c_str());
+
+    if (m_symmetricBars)
+    {
+        UINT verticalBarSize = min(m_topBar, m_bottomBar);
+        m_topBar = verticalBarSize;
+        m_bottomBar = verticalBarSize;
+        UINT horizontalBarSize = min(m_leftBar, m_rightBar);
+        m_leftBar = horizontalBarSize;
+        m_rightBar = horizontalBarSize;
+    }
+
+    // sanity check
+    if (m_leftBar >= m_width / 2 - 16)
+        m_leftBar = 0;
+    if (m_rightBar >= m_width / 2 - 16)
+        m_rightBar = 0;
+    if (m_topBar >= m_height / 2 - 16)
+        m_topBar = 0;
+    if (m_bottomBar >= m_height / 2 - 16)
+        m_bottomBar = 0;
+
+    return hr;
+}
+
+HRESULT Detection::DispatchLuma(ID3D11DeviceContext* context, TextureView target)
+{
+    HRESULT hr = S_OK;
+
     D3D11_TEXTURE2D_DESC target_desc = {};
     if (!target.GetTexture())
         return E_INVALIDARG;
+
     target.GetTexture()->GetDesc(&target_desc);
 
     // Set the shader
@@ -328,18 +451,18 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     ID3D11ShaderResourceView* srv = target.GetSRV();
     context->CSSetShaderResources(0, 1, &srv);
 
-    // Set the UAVs for row and column flags
+    // Set output luma UAV
     ID3D11UnorderedAccessView* uavs[] = { m_luma.GetUAV() };
     context->CSSetUnorderedAccessViews(0, 1, uavs, nullptr);
 
-    // Dispatch compute shader to process rows and columns
+    // Dispatch for entire input texture
     UINT threadGroupCountX = (target_desc.Width + 15) / 16;
     UINT threadGroupCountY = (target_desc.Height + 15) / 16;
     context->Dispatch(threadGroupCountX, threadGroupCountY, 1);
 
     // Clear UAVs after dispatch
-    ID3D11UnorderedAccessView* nullUAVs[] = { nullptr, nullptr };
-    context->CSSetUnorderedAccessViews(0, 2, nullUAVs, nullptr);
+    ID3D11UnorderedAccessView* nullUAVs[] = { nullptr };
+    context->CSSetUnorderedAccessViews(0, 1, nullUAVs, nullptr);
 
     // Unbind
     ID3D11ShaderResourceView* nullSRVs[1] = { nullptr };
@@ -347,118 +470,6 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     ID3D11Buffer* nullCBs[1] = { nullptr };
     context->CSSetConstantBuffers(0, 1, nullCBs);
     context->CSSetShader(nullptr, nullptr, 0);
-
-    context->CopyResource(m_lumaStaging.Get(), m_luma.GetTexture());
-
-    D3D11_MAPPED_SUBRESOURCE mappedLuma = {};
-    context->Map(m_lumaStaging.Get(), 0, D3D11_MAP_READ, 0, &mappedLuma);
-
-    const float* luma = reinterpret_cast<const float*>(mappedLuma.pData);
-    const UINT pitch = mappedLuma.RowPitch / sizeof(float);
-
-    // minimum detection is 16px
-    UINT minBarSize = 16;
-
-    // maximum threshold for black detection
-    float maxBlackThreshold = SDR_LUMA_THRESHOLD;
-    float blackVariance = 1e-6f;
-    // Adjust threshold for HDR10 PQ content
-    switch (m_colorSpace)
-    {
-    case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
-        maxBlackThreshold = HDR10_LUMA_THRESHOLD;
-        blackVariance = 1e-10f;
-        break;
-    }
-
-    // m_blackThreshold is user setting between 0.0 and 1.0
-    float blackThreshold = m_blackThreshold * maxBlackThreshold;
-
-#ifndef OLD_DETECTION
-    // inside out detection
-    const int hCenter = m_width / 2;
-    const int vCenter = m_height / 2;
-
-    m_topBar = FindBarSizeCenterOut(luma, pitch, m_width, m_height,
-        true, vCenter, -1, 0,
-        blackThreshold, m_blackRatio, blackVariance, minBarSize);
-
-    m_bottomBar = FindBarSizeCenterOut(luma, pitch, m_width, m_height,
-        true, vCenter, 1, m_height - 1,
-        blackThreshold, m_blackRatio, blackVariance, minBarSize);
-
-    m_leftBar = FindBarSizeCenterOut(luma, pitch, m_width, m_height,
-        false, hCenter, -1, 0,
-        blackThreshold, m_blackRatio, blackVariance, minBarSize);
-
-    m_rightBar = FindBarSizeCenterOut(luma, pitch, m_width, m_height,
-        false, hCenter, 1, m_width - 1,
-        blackThreshold, m_blackRatio, blackVariance, minBarSize);
-
-#else
-    m_topBar = 0;
-    for (UINT y = 0; y < UINT(m_height); ++y) {
-        const float* row = luma + y * pitch;
-        if (!isLineMostlyBlack(row, m_width, 1, blackThreshold, m_blackRatio, blackVariance))
-        {
-            m_topBar = y;
-            break;
-        }
-    }
-    m_topBar = m_topBar < minBarSize ? 0 : m_topBar;
-
-    m_bottomBar = 0;
-    for (UINT y = m_height - 1; y >= 0; --y) {
-        const float* row = luma + y * pitch;
-        if (!isLineMostlyBlack(row, m_width, 1, blackThreshold, m_blackRatio, blackVariance))
-        {
-            m_bottomBar = (m_height - 1) - y;
-            break;
-        }
-        if (y == 0)
-            break;
-    }
-    m_bottomBar = m_bottomBar < minBarSize ? 0 : m_bottomBar;
-
-    m_leftBar = 0;
-    for (UINT x = 0; x < UINT(m_width); ++x) {
-        const float* start = luma + x;
-        if (!isLineMostlyBlack(start, m_height, m_width, blackThreshold, m_blackRatio, blackVariance))
-        {
-            m_leftBar = x;
-            break;
-        }
-    }
-    m_leftBar = m_leftBar < minBarSize ? 0 : m_leftBar;
-
-    m_rightBar = 0;
-    for (UINT x = m_width - 1; x >= 0; --x) {
-        const float* start = luma + x;
-        if (!isLineMostlyBlack(start, m_height, m_width, blackThreshold, m_blackRatio, blackVariance))
-        {
-            m_rightBar = (m_width - 1) - x;
-            break;
-        }
-        if (x == 0)
-            break;
-    }
-    m_rightBar = m_rightBar < minBarSize ? 0 : m_rightBar;
-#endif
-
-    //OutputDebugStringA((std::to_string(m_topBarEnd) + "," + std::to_string(m_bottomBarStart) + "," +
-    //    std::to_string(m_leftBarEnd) + "," + std::to_string(m_rightBarStart) + "\n").c_str());
-
-    context->Unmap(m_lumaStaging.Get(), 0);
-
-    if (m_symmetricBars)
-    {
-        UINT verticalBarSize = min(m_topBar, m_bottomBar);
-        m_topBar = verticalBarSize;
-        m_bottomBar = verticalBarSize;
-        UINT horizontalBarSize = min(m_leftBar, m_rightBar);
-        m_leftBar = horizontalBarSize;
-        m_rightBar = horizontalBarSize;
-    }
 
     return hr;
 }
@@ -559,6 +570,9 @@ std::vector<BlackBar> Detection::GetFixedBars(UINT windowWidth, UINT windowHeigh
 std::vector<BlackBar> Detection::GetDetectedBars()
 {
     std::vector<BlackBar> ret;
+
+    if (m_device == nullptr)
+        return ret;
 
     UINT left = m_leftBar;
     UINT right = m_rightBar;

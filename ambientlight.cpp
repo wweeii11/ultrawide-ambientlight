@@ -30,8 +30,6 @@ D3D11_BOX GetMirroredBox(D3D11_BOX box, UINT width, UINT height)
     return mirrored;
 }
 
-
-
 AmbientLight::AmbientLight()
     : m_effectRendered(false),
     m_zoomRendered(false),
@@ -46,7 +44,9 @@ AmbientLight::AmbientLight()
     m_lastPresentTime(0),
     m_perfFreq(0),
     m_showConfigWindow(false),
-    m_clearConfigWindow(false)
+    m_clearConfigWindow(false),
+    m_resetUiPosition(false),
+    m_ready(false)
 {
     m_dirtyRects[0] = { 0, 0, 0, 0 };
     m_dirtyRects[1] = { 0, 0, 0, 0 };
@@ -214,6 +214,8 @@ AmbientLight::DesktopFormat AmbientLight::GetDesktopFormat()
 
 HRESULT AmbientLight::Initialize(HWND hwnd)
 {
+    m_ready = false;
+
     m_hwnd = hwnd;
 
     if (!m_settings.loaded)
@@ -270,14 +272,6 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
     scd.Scaling = DXGI_SCALING_STRETCH;
 
     hr = dxgiFactory2->CreateSwapChainForComposition(m_device.Get(), &scd, nullptr, &m_swapchain);
-    char buffer[256];
-    sprintf_s(buffer, "Swapchain created: %dx%d, format: %s\n", scd.Width, scd.Height,
-        scd.Format == DXGI_FORMAT_B8G8R8A8_UNORM ? "BGRA8"
-        : scd.Format == DXGI_FORMAT_R10G10B10A2_UNORM ? "RGBA10"
-        : scd.Format == DXGI_FORMAT_R16G16B16A16_FLOAT ? "RGBAF16"
-        : "Unknown"
-    );
-    OutputDebugStringA(buffer);
     RETURN_IF_FAILED(hr);
 
     hr = DCompositionCreateDevice(dxgiDevice.Get(), __uuidof(IDCompositionDevice), &m_dcompDevice);
@@ -297,6 +291,8 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 
     hr = m_dcompDevice->Commit();
     RETURN_IF_FAILED(hr);
+
+    m_ready = true;
 
     m_copy.Initialize(m_device, m_deferred.Get());
 
@@ -336,31 +332,8 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
 
 void AmbientLight::Render()
 {
-    if (nullptr == m_device)
+    if (nullptr == m_device || !m_ready)
         return;
-
-#ifdef _DEBUG
-    static ULONGLONG lastLogTime = 0;
-    ULONGLONG currentTime = GetTickCount64();
-    if (1000 < (currentTime - lastLogTime))
-    {
-
-        OutputDebugStringA("=== Performance (ms):\n");
-        m_framePerfTimer.PrintToDebug();
-        m_capturePerfTimer.PrintToDebug();
-        m_renderPerfTimer.PrintToDebug();
-        m_detectPerfTimer.PrintToDebug();
-        m_sleepPerfTimer.PrintToDebug();
-        lastLogTime = currentTime;
-
-        UINT ref = m_device->AddRef();
-        ref = m_device->Release();
-
-        char buffer[64];
-        sprintf_s(buffer, "=== Device ref %u\n", ref);
-        OutputDebugStringA(buffer);
-    }
-#endif
 
     ScopedPerfTimer frameTimer(m_framePerfTimer);
 
@@ -517,72 +490,6 @@ bool AmbientLight::RenderEffects()
             m_processedBlurTexture, src.left, src.top, RECT_WIDTH(src), RECT_HEIGHT(src), flip);
     }
 
-    m_zoomRendered = false;
-    if (m_settings.autoDetectionInner)
-    {
-        if (m_blackBars.size() == 4)
-        {
-            if (m_settings.autoDetectionZoom)
-            {
-                RECT innerRect = { 0 };
-                // find the inner box
-                if (m_blackBars[0].position == BlackBarPosition::Left)
-                {
-                    innerRect.left = 0;
-                    innerRect.right = m_gameWidth;
-                    innerRect.top = m_blackBars[2].height;
-                    innerRect.bottom = m_gameHeight - m_blackBars[3].height;
-                }
-                else
-                {
-                    innerRect.left = m_blackBars[2].width;
-                    innerRect.right = m_gameWidth - m_blackBars[3].width;
-                    innerRect.top = 0;
-                    innerRect.bottom = m_gameHeight;
-                }
-
-                if (RECT_WIDTH(innerRect) >= LONG(m_windowWidth / 2) && RECT_HEIGHT(innerRect) > LONG(m_windowHeight / 2))
-                {
-                    // zoom rect
-                    float windowAspect = (float)m_windowWidth / (float)m_windowHeight;
-                    float innerAspect = (float)RECT_WIDTH(innerRect) / (float)RECT_HEIGHT(innerRect);
-                    RECT zoomedRect = { 0, 0, (long)m_windowWidth, (long)m_windowHeight };
-                    if (innerAspect <= windowAspect)
-                    {
-                        // inner is wider, zoom based on height
-                        UINT zoomedWidth = (UINT)(RECT_HEIGHT(innerRect) * windowAspect);
-                        zoomedRect.left = (m_windowWidth - zoomedWidth) / 2;
-                        zoomedRect.right = zoomedRect.left + zoomedWidth;
-                    }
-                    else
-                    {
-                        // inner is taller, zoom based on width
-                        UINT zoomedHeight = (UINT)(RECT_WIDTH(innerRect) / windowAspect);
-                        zoomedRect.top = (m_windowHeight - zoomedHeight) / 2;
-                        zoomedRect.bottom = zoomedRect.top + zoomedHeight;
-                    }
-                    // now copy the zoomed inner box to the effect texture
-                    m_copy.Render(m_deferred.Get(), m_effectCanvasTexture, zoomedRect.left, zoomedRect.top, RECT_WIDTH(zoomedRect), RECT_HEIGHT(zoomedRect),
-                        m_gameTexture, innerRect.left, innerRect.top, RECT_WIDTH(innerRect), RECT_HEIGHT(innerRect));
-
-                    m_zoomRendered = true;
-                }
-            }
-            else
-            {
-                // clear the inner box in the effect texture
-                ComPtr<ID3D11DeviceContext1> deferred1 = nullptr;
-                m_deferred.As(&deferred1);
-                if (deferred1)
-                {
-                    float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-                    D3D11_RECT rects[2] = { m_blackBars[2].toRect(), m_blackBars[3].toRect() };
-                    deferred1->ClearView(m_effectCanvasTexture.GetRTV(), color, &rects[0], 2);
-                }
-            }
-        }
-    }
-
     m_effectRendered = true;
 
     return true;
@@ -607,7 +514,7 @@ void AmbientLight::RenderConfig()
     if (!m_showConfigWindow)
         return;
 
-    bool open = RenderUI(m_hwnd, m_settings, m_gameWidth, m_gameHeight, m_resetUiPosition);
+    bool open = RenderUI(m_hwnd, m_settings, m_gameWidth, m_gameHeight, m_resetUiPosition, GetDebugString());
     ShowConfigWindow(open);
 
     m_resetUiPosition = false;
@@ -630,8 +537,75 @@ void AmbientLight::RenderBackBuffer()
         if (m_settings.vignetteEnabled)
             m_vignette.Render(m_deferred.Get(), m_effectCanvasTexture);
 
-        if (m_settings.useAutoDetection && m_settings.autoDetectionLightMask && !m_zoomRendered)
+        if (m_settings.useAutoDetection && m_settings.autoDetectionLightMask)
             m_detection.RenderLumaMask(m_deferred.Get(), m_effectCanvasTexture);
+
+        m_zoomRendered = false;
+        if (m_settings.autoDetectionInner)
+        {
+            if (m_blackBars.size() == 4)
+            {
+                if (m_settings.autoDetectionZoom)
+                {
+                    RECT innerRect = { 0 };
+                    // find the inner box
+                    if (m_blackBars[0].position == BlackBarPosition::Left)
+                    {
+                        innerRect.left = 0;
+                        innerRect.right = m_gameWidth;
+                        innerRect.top = m_blackBars[2].height;
+                        innerRect.bottom = m_gameHeight - m_blackBars[3].height;
+                    }
+                    else
+                    {
+                        innerRect.left = m_blackBars[2].width;
+                        innerRect.right = m_gameWidth - m_blackBars[3].width;
+                        innerRect.top = 0;
+                        innerRect.bottom = m_gameHeight;
+                    }
+
+                    if (RECT_WIDTH(innerRect) >= LONG(m_windowWidth / 2) && RECT_HEIGHT(innerRect) > LONG(m_windowHeight / 2))
+                    {
+                        // zoom rect
+                        float innerAspect = (float)RECT_WIDTH(innerRect) / (float)RECT_HEIGHT(innerRect);
+
+                        UINT zoomHeight = m_windowHeight;
+                        UINT zoomWidth = (UINT)(zoomHeight * innerAspect);
+
+                        if (zoomWidth > m_windowWidth)
+                        {
+                            zoomWidth = m_windowWidth;
+                            zoomHeight = (UINT)(zoomWidth / innerAspect);
+                        }
+
+                        RECT zoomedRect = { 
+                            LONG(m_windowWidth - zoomWidth) / 2,
+                            LONG(m_windowHeight - zoomHeight) / 2,
+                            LONG(m_windowWidth - zoomWidth) / 2 + (LONG)zoomWidth,
+                            LONG(m_windowHeight - zoomHeight) / 2 + (LONG)zoomHeight
+                        };
+
+                        // now copy the zoomed inner box to the effect texture
+                        m_copy.Render(m_deferred.Get(), m_effectCanvasTexture, zoomedRect.left, zoomedRect.top, RECT_WIDTH(zoomedRect), RECT_HEIGHT(zoomedRect),
+                            m_gameTexture, innerRect.left, innerRect.top, RECT_WIDTH(innerRect), RECT_HEIGHT(innerRect));
+
+                        m_zoomRendered = true;
+                    }
+                }
+                else
+                {
+                    // clear the inner box in the effect texture
+                    ComPtr<ID3D11DeviceContext1> deferred1 = nullptr;
+                    m_deferred.As(&deferred1);
+                    if (deferred1)
+                    {
+                        float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                        D3D11_RECT rects[2] = { m_blackBars[2].toRect(), m_blackBars[3].toRect() };
+                        deferred1->ClearView(m_effectCanvasTexture.GetRTV(), color, &rects[0], 2);
+                    }
+                }
+            }
+        }
     }
 
     m_deferred->CopyResource(backview.GetTexture(), m_effectCanvasTexture.GetTexture());
@@ -786,4 +760,47 @@ void AmbientLight::ShowConfigWindow(bool show)
         dwExStyle = show ? dwExStyle & ~WS_EX_TRANSPARENT : dwExStyle | WS_EX_TRANSPARENT;
         SetWindowLong(m_hwnd, GWL_EXSTYLE, dwExStyle);
     }
+}
+
+std::string AmbientLight::GetDebugString()
+{
+    static std::string debugStr;
+    static ULONGLONG lastLogTime = 0;
+    ULONGLONG currentTime = GetTickCount64();
+    if (1000 < (currentTime - lastLogTime))
+    {
+        lastLogTime = currentTime;
+
+        UINT ref = m_device->AddRef();
+        ref = m_device->Release();
+
+        auto format = GetDesktopFormat();
+        std::string formatStr = (format.format == DXGI_FORMAT_B8G8R8A8_UNORM) ? "BGRA8" :
+            (format.format == DXGI_FORMAT_R10G10B10A2_UNORM) ? "RGBA10" :
+            (format.format == DXGI_FORMAT_R16G16B16A16_FLOAT) ? "RGBAF16" : "Unknown";
+        std::string colorSpaceStr = DXGIColorSpaceToString(format.colorSpace);
+
+        char logBuffer[512] = { 0 };
+        sprintf_s(logBuffer, 
+            "- Format: %s\n"
+            "- ColorSpace: %s\n"
+            "- Performance (ms):\n"
+            "%s\n%s\n%s\n%s\n%s\n"
+            "- DX ref %u\n",
+            formatStr.c_str(), colorSpaceStr.c_str(),
+            m_framePerfTimer.ToString().c_str(),
+            m_capturePerfTimer.ToString().c_str(),
+            m_renderPerfTimer.ToString().c_str(),
+            m_detectPerfTimer.ToString().c_str(),
+            m_sleepPerfTimer.ToString().c_str(),
+            ref
+        );
+
+        debugStr = logBuffer;
+
+#ifdef _DEBUG
+        OutputDebugStringA(logBuffer);
+#endif
+    }
+    return debugStr;
 }

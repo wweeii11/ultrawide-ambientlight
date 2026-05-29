@@ -133,7 +133,7 @@ void InitUI(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context
 }
 
 
-bool RenderUI(HWND hwnd, AppSettings& settings, UINT gameWidth, UINT gameHeight, bool resetPos)
+bool RenderUI(HWND hwnd, AppSettings& settings, UINT gameWidth, UINT gameHeight, bool resetPos, std::string log)
 {
     // Start the Dear ImGui frame
     ImGui_ImplDX11_NewFrame();
@@ -427,6 +427,16 @@ bool RenderUI(HWND hwnd, AppSettings& settings, UINT gameWidth, UINT gameHeight,
                 SaveSettings(settings);
             }
 
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("Log"))
+        {
+            if (ImGui::Button("Copy"))
+            {
+                ImGui::SetClipboardText(log.c_str());
+            }
+            ImGui::TextWrapped(log.c_str());
             ImGui::EndTabItem();
         }
 
