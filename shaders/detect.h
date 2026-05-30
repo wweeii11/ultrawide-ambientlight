@@ -58,6 +58,7 @@ private:
     ComPtr<ID3D11Buffer> m_constants;
 
     float m_blackThreshold;
+	float m_blackVariance;
     float m_blackRatio;
 
     bool m_symmetricBars;

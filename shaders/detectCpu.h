@@ -56,7 +56,7 @@ UINT FindBarSizeCenterOut(const float* luma, UINT pitch, int width, int height,
         if (currentContentHalfSize < 4) { currentContentHalfSize = 4; }
 
         // 3. Derive our adaptive UI thickness threshold dynamically
-        int adaptiveUiThicknessMax = static_cast<int>(currentContentHalfSize * 0.08f);
+        int adaptiveUiThicknessMax = static_cast<int>(currentContentHalfSize * 0.3f);
 
         // --- ENHANCED HARD EARLY BREAKS ---
         if (lastKnownContentLine == (i - step))
@@ -157,7 +157,7 @@ UINT FindBarSizeCenterOutWithFlags(const UINT* activeFlags, int startIdx, int st
         int currentMovieHalfSize = std::abs(lastKnownMovieLine - startIdx);
         if (currentMovieHalfSize < 4) { currentMovieHalfSize = 4; }
 
-        int adaptiveUiThicknessMax = static_cast<int>(currentMovieHalfSize * 0.08f);
+        int adaptiveUiThicknessMax = static_cast<int>(currentMovieHalfSize * 0.3f);
 
         // Hard Early Breaks
         if (lastKnownMovieLine == (i - step)) {

@@ -99,11 +99,33 @@ HRESULT Detection::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceCo
         CreateBuffers();
     }
 
-    m_blackThreshold = blackThreshold;
     m_blackRatio = blackRatio;
     m_symmetricBars = symmetricBars;
 
     m_colorSpace = colorSpace;
+
+    // maximum threshold for black detection
+    // blackThreshold is user setting between 0.0 and 1.0
+    m_blackThreshold = blackThreshold * SDR_LUMA_THRESHOLD;
+    m_blackVariance = 1e-6f;
+
+    // Adjust threshold for HDR10 PQ content
+    switch (m_colorSpace)
+    {
+    case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
+        m_blackThreshold = blackThreshold * HDR10_LUMA_THRESHOLD;
+        m_blackVariance = 1e-10f;
+        break;
+    }
+
+    DetectionParams params = {};
+    params.Width = m_width;
+    params.Height = m_height;
+    params.BlackThreshold = m_blackThreshold;
+    params.BlackRatio = m_blackRatio;
+    params.VarianceThreshold = m_blackVariance;
+
+    context->UpdateSubresource(m_constants.Get(), 0, nullptr, &params, 0, 0);
 
     m_reservedWidth = reservedWidth;
     m_reservedHeight = reservedHeight;
@@ -226,29 +248,6 @@ HRESULT Detection::DispatchRowColAnalysis(ID3D11DeviceContext* context)
 {
     HRESULT hr = S_OK;
 
-    // maximum threshold for black detection
-    float maxBlackThreshold = SDR_LUMA_THRESHOLD;
-    float blackVariance = 1e-6f;
-    // Adjust threshold for HDR10 PQ content
-    switch (m_colorSpace)
-    {
-    case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
-        maxBlackThreshold = HDR10_LUMA_THRESHOLD;
-        blackVariance = 1e-10f;
-        break;
-    }
-
-    // m_blackThreshold is user setting between 0.0 and 1.0
-    float blackThreshold = m_blackThreshold * maxBlackThreshold;
-
-    DetectionParams params = {};
-    params.Width = m_width;
-    params.Height = m_height;
-    params.BlackThreshold = blackThreshold;
-    params.BlackRatio = m_blackRatio;
-    params.VarianceThreshold = blackVariance;
-
-    context->UpdateSubresource(m_constants.Get(), 0, nullptr, &params, 0, 0);
     context->CSSetConstantBuffers(0, 1, m_constants.GetAddressOf());
 
     // Run Row Analysis Shader
@@ -334,21 +333,6 @@ HRESULT Detection::Detect(ID3D11DeviceContext* context, TextureView target)
     RETURN_IF_FAILED(hr);
 
 #ifdef CPU_DETECTION
-    // maximum threshold for black detection
-    float maxBlackThreshold = SDR_LUMA_THRESHOLD;
-    float blackVariance = 1e-6f;
-    // Adjust threshold for HDR10 PQ content
-    switch (m_colorSpace)
-    {
-    case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
-        maxBlackThreshold = HDR10_LUMA_THRESHOLD;
-        blackVariance = 1e-10f;
-        break;
-    }
-
-    // m_blackThreshold is user setting between 0.0 and 1.0
-    float blackThreshold = m_blackThreshold * maxBlackThreshold;
-
     // minimum detection is 16px
     UINT minBarSize = 16;
 
@@ -498,6 +482,15 @@ HRESULT Detection::RenderLumaMask(ID3D11DeviceContext* context, TextureView targ
     ID3D11UnorderedAccessView* uav = target.GetUAV();
     context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
 
+    DetectionParams params = {};
+    params.Width = m_width;
+    params.Height = m_height;
+    params.BlackThreshold = m_blackThreshold;
+    params.BlackRatio = m_blackRatio;
+    params.VarianceThreshold = m_blackVariance;
+
+    context->CSSetConstantBuffers(0, 1, m_constants.GetAddressOf());
+
     context->Dispatch(
         (target_desc.Width + 15) / 16,
         (target_desc.Height + 15) / 16,
@@ -507,6 +500,8 @@ HRESULT Detection::RenderLumaMask(ID3D11DeviceContext* context, TextureView targ
     context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
     srv = nullptr;
     context->CSSetShaderResources(0, 1, &srv);
+    ID3D11Buffer* nullBuffer = nullptr;
+    context->CSSetConstantBuffers(1, 1, &nullBuffer);
 
     return hr;
 }
