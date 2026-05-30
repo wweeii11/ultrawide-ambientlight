@@ -288,6 +288,12 @@ public:
         m_last = 0;
     }
 
+	ULONGLONG Elapsed() const {
+		if (m_last == 0) return 0;
+		ULONGLONG now = GetTickCount64();
+		return now - m_last;
+	}
+
     bool HasElapsed(ULONGLONG intervalMs) {
         ULONGLONG now = GetTickCount64();
         if (m_last == 0 || (now - m_last) >= intervalMs) {

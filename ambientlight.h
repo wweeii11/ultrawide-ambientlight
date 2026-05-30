@@ -96,8 +96,8 @@ private:
     void ClearEffects();
 
     void Present();
-
     void Detect();
+    void Wait();
 
     void ShowConfigWindow(bool show);
     bool m_showConfigWindow;

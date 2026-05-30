@@ -368,6 +368,8 @@ void AmbientLight::Render()
         Detect();
     }
 
+    Wait();
+
     bool changed = ReadSettings(m_settings);
     if (changed)
         UpdateSettings();
@@ -672,50 +674,11 @@ void AmbientLight::Present()
             }
             m_presented = true;
         }
-        else if (!m_effectRendered)
-        {
-            // if effect is not rendered, and already presented, do nothing
-        }
         else
         {
             m_presented = false;
         }
-
-        if (m_presented)
-        {
-            m_dcompDevice->Commit();
-        }
     }
-
-    INT64 now = 0;
-    double elapsedMs = 0.0;
-    double frameTime = 1000.0 / m_frameRate;
-
-    QueryPerformanceCounter((LARGE_INTEGER*)&now);
-    if (m_lastPresentTime != 0)
-    {
-        ScopedPerfTimer sleepTimer(m_sleepPerfTimer);
-        elapsedMs = (double)((now - m_lastPresentTime) * 1000) / m_perfFreq;
-
-        while (elapsedMs < frameTime)
-        {
-            double remaining = frameTime - elapsedMs;
-            if (remaining > 1.5)
-            {
-                Sleep(1);
-            }
-            else
-            {
-                Sleep(0);
-            }
-
-            QueryPerformanceCounter((LARGE_INTEGER*)&now);
-            elapsedMs = (double)((now - m_lastPresentTime) * 1000) / m_perfFreq;
-        }
-    }
-
-    QueryPerformanceCounter((LARGE_INTEGER*)&now);
-    m_lastPresentTime = now;
 }
 
 void AmbientLight::Detect()
@@ -746,6 +709,53 @@ void AmbientLight::Detect()
                 UpdateSettings();
             }
         }
+    }
+}
+
+void AmbientLight::Wait()
+{
+    // if we presented a frame, use frame rate setting
+    if (m_presented || m_effectRendered)
+    {
+        INT64 now = 0;
+        double elapsedMs = 0.0;
+        double frameTime = 1000.0 / m_frameRate;
+
+        QueryPerformanceCounter((LARGE_INTEGER*)&now);
+        if (m_lastPresentTime != 0)
+        {
+            ScopedPerfTimer sleepTimer(m_sleepPerfTimer);
+            elapsedMs = (double)((now - m_lastPresentTime) * 1000) / m_perfFreq;
+
+            while (elapsedMs < frameTime)
+            {
+                double remaining = frameTime - elapsedMs;
+                if (remaining > 1.5)
+                {
+                    Sleep(1);
+                }
+                else
+                {
+                    Sleep(0);
+                }
+
+                QueryPerformanceCounter((LARGE_INTEGER*)&now);
+                elapsedMs = (double)((now - m_lastPresentTime) * 1000) / m_perfFreq;
+            }
+        }
+
+        QueryPerformanceCounter((LARGE_INTEGER*)&now);
+        m_lastPresentTime = now;
+    }
+    else if (m_settings.useAutoDetection)
+    {
+        // if we didn't render, we can sleep up to 1 second until next detection
+		ULONGLONG timeSinceLastDetect = m_detectionTimer.Elapsed();
+		if (timeSinceLastDetect < (ULONGLONG)m_settings.autoDetectionTime)
+		{
+			ULONGLONG remaining = (ULONGLONG)m_settings.autoDetectionTime - timeSinceLastDetect;
+			Sleep(min(1000, (DWORD)remaining));
+		}
     }
 }
 
