@@ -509,6 +509,7 @@ void AmbientLight::ClearEffects()
         m_presented = false;
     }
     m_effectRendered = false;
+    m_zoomRendered = false;
 }
 
 void AmbientLight::RenderConfig()
@@ -542,7 +543,6 @@ void AmbientLight::RenderBackBuffer()
         if (m_settings.useAutoDetection && m_settings.autoDetectionLightMask)
             m_detection.RenderLumaMask(m_deferred.Get(), m_effectCanvasTexture);
 
-        m_zoomRendered = false;
         if (m_settings.autoDetectionInner)
         {
             if (m_blackBars.size() == 4)
@@ -755,6 +755,9 @@ void AmbientLight::Wait()
 		{
 			ULONGLONG remaining = (ULONGLONG)m_settings.autoDetectionTime - timeSinceLastDetect;
 			Sleep(min(1000, (DWORD)remaining));
+            //char logBuffer[128] = { 0 };
+            //sprintf_s(logBuffer, "Sleeping for %llu ms until next detection...\n", remaining);
+            //OutputDebugStringA(logBuffer);
 		}
     }
 }
