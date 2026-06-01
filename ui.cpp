@@ -133,7 +133,7 @@ void InitUI(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context
 }
 
 
-bool RenderUI(HWND hwnd, AppSettings& settings, UINT gameWidth, UINT gameHeight, bool resetPos)
+bool RenderUI(HWND hwnd, AppSettings& settings, UINT gameWidth, UINT gameHeight, bool resetPos, std::string log)
 {
     // Start the Dear ImGui frame
     ImGui_ImplDX11_NewFrame();
@@ -286,6 +286,18 @@ bool RenderUI(HWND hwnd, AppSettings& settings, UINT gameWidth, UINT gameHeight,
                     {
                         ImGui::SetTooltip("Perform detection for additional black bars. (experimental)");
                     }
+                    if (settings.autoDetectionInner)
+                    {
+                        if (ImGui::Checkbox("Scale to fit screen", &settings.autoDetectionZoom))
+                        {
+                            SaveSettings(settings);
+                        }
+                        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                        {
+                            ImGui::SetTooltip("Scale the inner area to fit the screen. (experimental)\n"
+                                              "Recommended for video only, not for gaming. Mouse input will not be accurate.");
+                        }
+                    }
                 }
                 else
                 {
@@ -415,6 +427,16 @@ bool RenderUI(HWND hwnd, AppSettings& settings, UINT gameWidth, UINT gameHeight,
                 SaveSettings(settings);
             }
 
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("Log"))
+        {
+            if (ImGui::Button("Copy"))
+            {
+                ImGui::SetClipboardText(log.c_str());
+            }
+            ImGui::TextWrapped(log.c_str());
             ImGui::EndTabItem();
         }
 

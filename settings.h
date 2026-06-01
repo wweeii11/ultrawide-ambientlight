@@ -34,7 +34,7 @@
 #define DEFAULT_DISPLAY                0
 #define DEFAULT_AUTO_DETECTION_INNER false
 #define DEFAULT_HDR_SUPPORT          true
-
+#define DEFAULT_AUTO_DETECTION_ZOOM  false
 
 struct ResolutionSettings
 {
@@ -89,6 +89,7 @@ struct AppSettings
     UINT autoDetectionReservedWidth = DEFAULT_AUTO_DETECTION_RESERVED_WIDTH;
     UINT autoDetectionReservedHeight = DEFAULT_AUTO_DETECTION_RESERVED_HEIGHT;
     bool autoDetectionInner = DEFAULT_AUTO_DETECTION_INNER;
+    bool autoDetectionZoom = DEFAULT_AUTO_DETECTION_ZOOM;
     bool hdrSupport = DEFAULT_HDR_SUPPORT;
     bool showInTaskbar = DEFAULT_SHOW_IN_TASKBAR;
     bool popupConfigOnFocus = true;

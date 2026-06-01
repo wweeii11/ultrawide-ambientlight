@@ -54,11 +54,11 @@ private:
     Vignette m_vignette;
     Detection m_detection;
     ElapsedTimer m_detectionTimer;
-    Detection m_detectInner;
-    ElapsedTimer m_detectionInnerTimer;
 
+    bool m_ready;
     bool m_effectRendered;
     bool m_presented;
+    bool m_zoomRendered;
 
     UINT m_gameWidth;
     UINT m_gameHeight;
@@ -96,10 +96,12 @@ private:
     void ClearEffects();
 
     void Present();
-
     void Detect();
+    void Wait();
 
     void ShowConfigWindow(bool show);
     bool m_showConfigWindow;
     bool m_clearConfigWindow;
+
+    std::string GetDebugString();
 };
