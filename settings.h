@@ -11,6 +11,7 @@
 #define DEFAULT_BLUR_DOWNSCALE	    64
 #define DEFAULT_ZOOM                1
 #define DEFAULT_FRAMERATE	        30
+#define DEFAULT_TRANSITION_TIME     500
 #define DEFAULT_MIRRORED	        true
 #define DEFAULT_STRETCHED           true
 #define DEFAULT_STRETCH_FACTOR      2.0f
@@ -70,6 +71,7 @@ struct AppSettings
     UINT blurPasses = DEFAULT_BLUR_PASSES;
     UINT blurSamples = DEFAULT_BLUR_SAMPLES;
     UINT frameRate = DEFAULT_FRAMERATE;
+    int transitionTimeMs = DEFAULT_TRANSITION_TIME;
     bool mirrored = DEFAULT_MIRRORED;
     bool stretched = DEFAULT_STRETCHED;
     float stretchFactor = DEFAULT_STRETCH_FACTOR;

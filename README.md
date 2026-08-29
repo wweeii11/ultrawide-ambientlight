@@ -34,6 +34,7 @@ Scenarios:
 - `Vignette`: Allow semi-transparency in the corners so overlays (e.g. FPS counters) remain visible.
 - `Mirror`: Apply a horizontal mirror to the effects to simulate a reflecting surface.
 - `Frame rate`: Rendering frame rate for the effects.
+- `Transition`: Smooth color changes over time. `0` disables smoothing; `300-1000 ms` is a useful range.
 
 ## Third-party Libraries
 - [inipp](https://github.com/mcmtroffaes/inipp)
