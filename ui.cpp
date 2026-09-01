@@ -395,6 +395,13 @@ bool RenderUI(HWND hwnd, AppSettings& settings, UINT gameWidth, UINT gameHeight,
                 SaveSettings(settings);
             }
 
+            if (ImGui::DragInt("Transition", &settings.transitionTimeMs, 1.0f, 0, 5000, "%d ms"))
+            {
+                settings.transitionTimeMs = std::clamp(settings.transitionTimeMs, 0, 5000);
+                SaveSettings(settings);
+            }
+            ImGui::SameLine(); HelpMarker("Temporal color smoothing. 0 disables it; 300-1000 ms is a useful range.");
+
             if (ImGui::DragInt("Zoom", (int*)&settings.zoom, 1, 0, 16))
             {
                 settings.zoom = std::clamp(settings.zoom, 0u, 16u);

@@ -5,6 +5,7 @@
 #include "ui.h"
 
 #include <algorithm>
+#include <cmath>
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dcomp.lib")
@@ -139,6 +140,8 @@ void AmbientLight::UpdateSettings()
 
 void AmbientLight::ValidateSettings()
 {
+    m_settings.transitionTimeMs = std::clamp(m_settings.transitionTimeMs, 0, 5000);
+
     if (m_settings.loaded && m_settings.useAutoDetection)
     {
         m_blackBars = m_detection.GetDetectedBars();
@@ -298,6 +301,8 @@ HRESULT AmbientLight::Initialize(HWND hwnd)
 
     m_gameTexture.Clear();
     m_downsampledTexture.Clear();
+    m_temporalTextures[0].Clear();
+    m_temporalTextures[1].Clear();
     m_processedBlurTexture.Clear();
     m_effectCanvasTexture.Clear();
 
@@ -318,6 +323,12 @@ HRESULT AmbientLight::CreateOffscreen(DXGI_FORMAT format)
     m_downsampledTexture.RecreateTexture(m_device.Get(), format,
         mipWidth,
         mipHeight);
+
+    m_temporalTextures[0].RecreateTexture(m_device.Get(), format, mipWidth, mipHeight);
+    m_temporalTextures[1].RecreateTexture(m_device.Get(), format, mipWidth, mipHeight);
+    m_temporalReady = false;
+    m_lastTemporalTime = 0;
+    m_temporalIndex = 0;
 
     m_processedBlurTexture.RecreateTexture(m_device.Get(), format,
         m_gameWidth,
@@ -440,16 +451,45 @@ bool AmbientLight::RenderEffects()
 
     m_blurDownscale.Render(m_deferred.Get(), m_downsampledTexture, m_settings.blurPasses);
 
+    TextureView* effectSource = &m_downsampledTexture;
+    if (m_settings.transitionTimeMs > 0)
+    {
+        INT64 now = 0;
+        QueryPerformanceCounter((LARGE_INTEGER*)&now);
+
+        float blend = 1.0f;
+        if (m_temporalReady && m_lastTemporalTime != 0)
+        {
+            const double elapsedMs = (double)(now - m_lastTemporalTime) * 1000.0 / m_perfFreq;
+            blend = (float)(1.0 - std::exp(-elapsedMs / m_settings.transitionTimeMs));
+        }
+
+        const UINT nextIndex = m_temporalReady ? 1 - m_temporalIndex : 0;
+        TextureView previous = m_temporalReady ? m_temporalTextures[m_temporalIndex] : TextureView();
+        m_copy.Render(m_deferred.Get(), m_temporalTextures[nextIndex], m_downsampledTexture,
+            Copy::FlipNone, blend, previous);
+        m_temporalIndex = nextIndex;
+        effectSource = &m_temporalTextures[m_temporalIndex];
+        m_temporalReady = true;
+        m_lastTemporalTime = now;
+    }
+    else
+    {
+        m_temporalReady = false;
+        m_lastTemporalTime = 0;
+        m_temporalIndex = 0;
+    }
+
     UINT mipWidth = max(1u, m_gameWidth >> m_settings.mipmapLevels);
     UINT mipHeight = max(1u, m_gameHeight >> m_settings.mipmapLevels);
     if (mipWidth > m_effectZoom * 2 && mipHeight > m_effectZoom * 2)
     {
         m_copy.Render(m_deferred.Get(), m_processedBlurTexture, 0, 0, m_gameWidth, m_gameHeight,
-            m_downsampledTexture, m_effectZoom, m_effectZoom, mipWidth - m_effectZoom * 2, mipHeight - m_effectZoom * 2);
+            *effectSource, m_effectZoom, m_effectZoom, mipWidth - m_effectZoom * 2, mipHeight - m_effectZoom * 2);
     }
     else
     {
-        m_copy.Render(m_deferred.Get(), m_processedBlurTexture, m_downsampledTexture);
+        m_copy.Render(m_deferred.Get(), m_processedBlurTexture, *effectSource);
     }
 
     ID3D11RenderTargetView* rtv = m_effectCanvasTexture.GetRTV();
@@ -510,6 +550,9 @@ void AmbientLight::ClearEffects()
     }
     m_effectRendered = false;
     m_zoomRendered = false;
+    m_temporalReady = false;
+    m_lastTemporalTime = 0;
+    m_temporalIndex = 0;
 }
 
 void AmbientLight::RenderConfig()

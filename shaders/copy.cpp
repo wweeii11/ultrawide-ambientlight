@@ -2,6 +2,8 @@
 #include "d3dcompiler.h"
 #include "copy_main_bin.h"
 
+#include <algorithm>
+
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -22,7 +24,8 @@ struct COPY_PARAMETERS
     // Register 2: [x, y, z, w] -> 16 bytes
     uint32_t flipHorizontal;
     uint32_t flipVertical;
-    float    padding[2];           // Manual padding to fill the 4-component register
+    float    blend;
+    float    padding;              // Manual padding to fill the 4-component register
 };
 
 Copy::Copy()
@@ -72,7 +75,7 @@ HRESULT Copy::Initialize(ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext
 
 HRESULT Copy::Render(ID3D11DeviceContext* context, TextureView target, UINT targetOffsetX, UINT targetOffsetY, UINT targetWidth, UINT targetHeight,
     TextureView source, UINT sourceOffsetX, UINT sourceOffsetY, UINT sourceWidth, UINT sourceHeight,
-    Flip flip)
+    Flip flip, float blend, TextureView previous)
 {
     HRESULT hr = S_OK;
 
@@ -103,14 +106,15 @@ HRESULT Copy::Render(ID3D11DeviceContext* context, TextureView target, UINT targ
     copyParams.srcSize = { static_cast<float>(sourceWidth), static_cast<float>(sourceHeight) };
     copyParams.dstOffset = { static_cast<float>(targetOffsetX), static_cast<float>(targetOffsetY) };
     copyParams.dstSize = { static_cast<float>(targetWidth), static_cast<float>(targetHeight) };
+    copyParams.blend = std::clamp(blend, 0.0f, 1.0f);
 
     context->UpdateSubresource(m_params.Get(), 0, nullptr, &copyParams, sizeof(COPY_PARAMETERS), 0);
     context->CSSetConstantBuffers(0, 1, m_params.GetAddressOf());
 
     context->CSSetSamplers(0, 1, m_samplerState.GetAddressOf());
 
-    ID3D11ShaderResourceView* srv = source.GetSRV();
-    context->CSSetShaderResources(0, 1, &srv);
+    ID3D11ShaderResourceView* srvs[] = { source.GetSRV(), previous.GetSRV() };
+    context->CSSetShaderResources(0, 2, srvs);
 
     context->Dispatch(
         (targetWidth + 15) / 16,
@@ -119,13 +123,15 @@ HRESULT Copy::Render(ID3D11DeviceContext* context, TextureView target, UINT targ
 
     uav = nullptr;
     context->CSSetUnorderedAccessViews(0, 1, &uav, nullptr);
-    srv = nullptr;
-    context->CSSetShaderResources(0, 1, &srv);
+    srvs[0] = nullptr;
+    srvs[1] = nullptr;
+    context->CSSetShaderResources(0, 2, srvs);
 
     return S_OK;
 }
 
-HRESULT Copy::Render(ID3D11DeviceContext* context, TextureView target, TextureView source, Flip flip)
+HRESULT Copy::Render(ID3D11DeviceContext* context, TextureView target, TextureView source, Flip flip,
+    float blend, TextureView previous)
 {
     D3D11_TEXTURE2D_DESC source_desc = {};
     source.GetTexture()->GetDesc(&source_desc);
@@ -135,5 +141,5 @@ HRESULT Copy::Render(ID3D11DeviceContext* context, TextureView target, TextureVi
 
     return Render(context, target, 0, 0, target_desc.Width, target_desc.Height,
         source, 0, 0, source_desc.Width, source_desc.Height,
-        flip);
+        flip, blend, previous);
 }

@@ -84,8 +84,13 @@ private:
 
     TextureView m_gameTexture;
     TextureView m_downsampledTexture;
+    TextureView m_temporalTextures[2];
     TextureView m_processedBlurTexture;
     TextureView m_effectCanvasTexture;
+
+    bool m_temporalReady = false;
+    INT64 m_lastTemporalTime = 0;
+    UINT m_temporalIndex = 0;
 
     HRESULT CreateOffscreen(DXGI_FORMAT format);
 

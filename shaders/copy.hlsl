@@ -6,10 +6,12 @@ cbuffer CopyParams : register(b0)
     float2 dstSize; // Width/Height of destination region (in pixels)
     uint flipHorizontal; // 1 to flip, 0 otherwise
     uint flipVertical; // 1 to flip, 0 otherwise
-    float2 padding; // Align to 16 bytes
+    float blend;
+    float padding; // Align to 16 bytes
 };
 
 Texture2D<float4> gInput : register(t0);
+Texture2D<float4> gPrevious : register(t1);
 RWTexture2D<float4> gOutput : register(u0);
 SamplerState samLinear : register(s0);
 
@@ -49,6 +51,11 @@ void main(uint3 DTid : SV_DispatchThreadID)
     // Final UV within the source texture
     float2 finalUV = srcUVStart + (uv * srcUVSize);
 
-    // 6. Sample with bilinear interpolation and write to UAV
-    gOutput[outCoord.xy] = gInput.SampleLevel(samLinear, finalUV, 0);
+    // 6. Sample with bilinear interpolation and blend with the previous frame
+    float4 current = gInput.SampleLevel(samLinear, finalUV, 0);
+    [branch]
+    if (blend >= 1.0f)
+        gOutput[outCoord.xy] = current;
+    else
+        gOutput[outCoord.xy] = lerp(gPrevious.Load(int3(outCoord, 0)), current, blend);
 }
